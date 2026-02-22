@@ -1,18 +1,19 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"math/rand"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
+
+	"github.com/eiannone/keyboard"
 )
 
 const (
 	boardWidth  = 20
 	boardHeight = 15
+	tickRate    = 140 * time.Millisecond
 )
 
 type point struct {
@@ -40,45 +41,111 @@ func newGame() game {
 
 func main() {
 	g := newGame()
-	in := bufio.NewReader(os.Stdin)
+
+	if err := keyboard.Open(); err != nil {
+		fmt.Printf("failed to read keyboard input: %v\n", err)
+		return
+	}
+	defer func() {
+		_ = keyboard.Close()
+	}()
+
+	dirCh := make(chan point, 1)
+	quitCh := make(chan struct{}, 1)
+	errCh := make(chan error, 1)
+	go readInput(dirCh, quitCh, errCh)
+
+	ticker := time.NewTicker(tickRate)
+	defer ticker.Stop()
+
+	clearScreen()
+	render(g)
 
 	for !g.over {
-		clearScreen()
-		render(g)
-		fmt.Print("Move (W/A/S/D), Q to quit: ")
-
-		text, _ := in.ReadString('\n')
-		text = strings.TrimSpace(strings.ToLower(text))
-		if len(text) > 0 {
-			switch text[0] {
-			case 'w':
-				if g.dir.y != 1 {
-					g.dir = point{x: 0, y: -1}
-				}
-			case 's':
-				if g.dir.y != -1 {
-					g.dir = point{x: 0, y: 1}
-				}
-			case 'a':
-				if g.dir.x != 1 {
-					g.dir = point{x: -1, y: 0}
-				}
-			case 'd':
-				if g.dir.x != -1 {
-					g.dir = point{x: 1, y: 0}
-				}
-			case 'q':
-				fmt.Println("Goodbye!")
-				return
+		select {
+		case dir := <-dirCh:
+			if !isOpposite(g.dir, dir) {
+				g.dir = dir
 			}
+		case <-ticker.C:
+			step(&g)
+			clearScreen()
+			render(g)
+		case <-quitCh:
+			clearScreen()
+			render(g)
+			fmt.Println("Goodbye!")
+			return
+		case err := <-errCh:
+			fmt.Printf("input error: %v\n", err)
+			return
 		}
-
-		step(&g)
 	}
 
 	clearScreen()
 	render(g)
 	fmt.Println("Game Over!")
+}
+
+func readInput(dirCh chan point, quitCh chan<- struct{}, errCh chan<- error) {
+	for {
+		char, key, err := keyboard.GetKey()
+		if err != nil {
+			select {
+			case errCh <- err:
+			default:
+			}
+			return
+		}
+
+		var (
+			next point
+			ok   bool
+		)
+
+		switch key {
+		case keyboard.KeyArrowUp:
+			next, ok = point{x: 0, y: -1}, true
+		case keyboard.KeyArrowDown:
+			next, ok = point{x: 0, y: 1}, true
+		case keyboard.KeyArrowLeft:
+			next, ok = point{x: -1, y: 0}, true
+		case keyboard.KeyArrowRight:
+			next, ok = point{x: 1, y: 0}, true
+		case keyboard.KeyEsc:
+			select {
+			case quitCh <- struct{}{}:
+			default:
+			}
+			return
+		}
+
+		switch char {
+		case 'w', 'W':
+			next, ok = point{x: 0, y: -1}, true
+		case 's', 'S':
+			next, ok = point{x: 0, y: 1}, true
+		case 'a', 'A':
+			next, ok = point{x: -1, y: 0}, true
+		case 'd', 'D':
+			next, ok = point{x: 1, y: 0}, true
+		case 'q', 'Q':
+			select {
+			case quitCh <- struct{}{}:
+			default:
+			}
+			return
+		}
+
+		if ok {
+			select {
+			case dirCh <- next:
+			default:
+				<-dirCh
+				dirCh <- next
+			}
+		}
+	}
 }
 
 func step(g *game) {
@@ -126,6 +193,11 @@ func render(g game) {
 		}
 		fmt.Println()
 	}
+	fmt.Println("\nControls: WASD or Arrow Keys to move, Q/Esc to quit.")
+}
+
+func isOpposite(a, b point) bool {
+	return a.x == -b.x && a.y == -b.y
 }
 
 func contains(parts []point, p point) bool {
