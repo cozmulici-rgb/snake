@@ -2,9 +2,10 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
 	"strings"
 	"time"
+
+	"snake/internal/game"
 
 	"github.com/eiannone/keyboard"
 )
@@ -15,32 +16,20 @@ const (
 	tickRate    = 140 * time.Millisecond
 )
 
-type point struct {
-	x int
-	y int
-}
+type inputEventKind int
 
-type game struct {
-	snake []point
-	dir   point
-	food  point
-	score int
-	over  bool
-}
+const (
+	eventDir inputEventKind = iota
+	eventQuit
+	eventRestart
+)
 
-func newGame() game {
-	rand.Seed(time.Now().UnixNano())
-	g := game{
-		snake: []point{{x: boardWidth / 2, y: boardHeight / 2}},
-		dir:   point{x: 0, y: 0},
-	}
-	g.food = randomFood(g.snake)
-	return g
+type inputEvent struct {
+	kind inputEventKind
+	dir  game.Direction
 }
 
 func main() {
-	g := newGame()
-
 	if err := keyboard.Open(); err != nil {
 		fmt.Printf("failed to read keyboard input: %v\n", err)
 		return
@@ -49,48 +38,52 @@ func main() {
 		_ = keyboard.Close()
 	}()
 
-	dirCh := make(chan point, 1)
-	quitCh := make(chan struct{}, 1)
+	eventCh := make(chan inputEvent, 16)
 	errCh := make(chan error, 1)
-	go readInput(dirCh, quitCh, errCh)
-
-	ticker := time.NewTicker(tickRate)
-	defer ticker.Stop()
-	started := false
+	go readInput(eventCh, errCh)
 
 	initScreen()
 	defer restoreScreen()
-	render(g, started)
 
-	for !g.over {
-		select {
-		case dir := <-dirCh:
-			if !started {
-				g.dir = dir
-				started = true
-			} else if !isOpposite(g.dir, dir) {
-				g.dir = dir
+	cfg := game.Config{Width: boardWidth, Height: boardHeight}
+	for {
+		state := game.New(cfg, nil)
+		ticker := time.NewTicker(tickRate)
+		drainInput(eventCh)
+		render(state, false)
+
+		for !state.IsOver() {
+			select {
+			case ev := <-eventCh:
+				switch ev.kind {
+				case eventDir:
+					state.SetDirection(ev.dir)
+				case eventQuit:
+					ticker.Stop()
+					render(state, false)
+					fmt.Println("Goodbye!")
+					return
+				}
+			case <-ticker.C:
+				state.Tick()
+				render(state, false)
+			case err := <-errCh:
+				ticker.Stop()
+				fmt.Printf("input error: %v\n", err)
+				return
 			}
-		case <-ticker.C:
-			if started {
-				step(&g)
-			}
-			render(g, started)
-		case <-quitCh:
-			render(g, started)
+		}
+
+		ticker.Stop()
+		render(state, true)
+		if !waitForEndMenu(eventCh, errCh) {
 			fmt.Println("Goodbye!")
-			return
-		case err := <-errCh:
-			fmt.Printf("input error: %v\n", err)
 			return
 		}
 	}
-
-	render(g, started)
-	fmt.Println("Game Over!")
 }
 
-func readInput(dirCh chan point, quitCh chan<- struct{}, errCh chan<- error) {
+func readInput(eventCh chan<- inputEvent, errCh chan<- error) {
 	for {
 		char, key, err := keyboard.GetKey()
 		if err != nil {
@@ -102,95 +95,71 @@ func readInput(dirCh chan point, quitCh chan<- struct{}, errCh chan<- error) {
 		}
 
 		var (
-			next point
-			ok   bool
+			dir game.Direction
+			ok  bool
 		)
 
 		switch key {
 		case keyboard.KeyArrowUp:
-			next, ok = point{x: 0, y: -1}, true
+			dir, ok = game.DirUp, true
 		case keyboard.KeyArrowDown:
-			next, ok = point{x: 0, y: 1}, true
+			dir, ok = game.DirDown, true
 		case keyboard.KeyArrowLeft:
-			next, ok = point{x: -1, y: 0}, true
+			dir, ok = game.DirLeft, true
 		case keyboard.KeyArrowRight:
-			next, ok = point{x: 1, y: 0}, true
+			dir, ok = game.DirRight, true
 		case keyboard.KeyEsc:
-			select {
-			case quitCh <- struct{}{}:
-			default:
-			}
-			return
+			eventCh <- inputEvent{kind: eventQuit}
+			continue
 		}
 
 		switch char {
 		case 'w', 'W':
-			next, ok = point{x: 0, y: -1}, true
+			dir, ok = game.DirUp, true
 		case 's', 'S':
-			next, ok = point{x: 0, y: 1}, true
+			dir, ok = game.DirDown, true
 		case 'a', 'A':
-			next, ok = point{x: -1, y: 0}, true
+			dir, ok = game.DirLeft, true
 		case 'd', 'D':
-			next, ok = point{x: 1, y: 0}, true
+			dir, ok = game.DirRight, true
+		case 'r', 'R':
+			eventCh <- inputEvent{kind: eventRestart}
+			continue
 		case 'q', 'Q':
-			select {
-			case quitCh <- struct{}{}:
-			default:
-			}
-			return
+			eventCh <- inputEvent{kind: eventQuit}
+			continue
 		}
 
 		if ok {
-			select {
-			case dirCh <- next:
-			default:
-				<-dirCh
-				dirCh <- next
-			}
+			eventCh <- inputEvent{kind: eventDir, dir: dir}
 		}
 	}
 }
 
-func step(g *game) {
-	head := g.snake[0]
-	next := point{x: head.x + g.dir.x, y: head.y + g.dir.y}
-
-	if next.x < 0 || next.y < 0 || next.x >= boardWidth || next.y >= boardHeight {
-		g.over = true
-		return
-	}
-	if contains(g.snake, next) {
-		g.over = true
-		return
-	}
-
-	g.snake = append([]point{next}, g.snake...)
-	if next == g.food {
-		g.score++
-		g.food = randomFood(g.snake)
-	} else {
-		g.snake = g.snake[:len(g.snake)-1]
-	}
-}
-
-func render(g game, started bool) {
+func render(state *game.State, showEndMenu bool) {
 	var b strings.Builder
-	b.Grow((boardWidth + 4) * (boardHeight + 8))
+	width := state.Width()
+	height := state.Height()
+	snake := state.Snake()
+	food := state.Food()
+	started := state.Started()
+
+	b.Grow((width + 4) * (height + 8))
 	b.WriteString("\x1b[H")
-	b.WriteString(fmt.Sprintf("Simple Snake (Windows console) | Score: %d\n\n", g.score))
-	for y := 0; y < boardHeight+2; y++ {
-		for x := 0; x < boardWidth+2; x++ {
+	b.WriteString(fmt.Sprintf("Simple Snake (Windows console) | Score: %d\n\n", state.Score()))
+	for y := 0; y < height+2; y++ {
+		for x := 0; x < width+2; x++ {
 			switch {
-			case x == 0 || y == 0 || x == boardWidth+1 || y == boardHeight+1:
+			case x == 0 || y == 0 || x == width+1 || y == height+1:
 				b.WriteByte('#')
 			default:
-				p := point{x: x - 1, y: y - 1}
+				p := game.Point{X: x - 1, Y: y - 1}
 				switch {
-				case p == g.food:
+				case p == food:
 					b.WriteByte('*')
-				case p == g.snake[0]:
+				case len(snake) > 0 && p == snake[0]:
 					b.WriteByte('@')
-				case contains(g.snake[1:], p):
+				case contains(snake[1:], p):
 					b.WriteByte('o')
 				default:
 					b.WriteByte(' ')
@@ -203,29 +172,46 @@ func render(g game, started bool) {
 	if !started {
 		b.WriteString("Press any direction key to start.\n")
 	}
+	if showEndMenu {
+		b.WriteString("Game Over! Press R to restart, Q/Esc to quit.\n")
+	}
 	fmt.Print(b.String())
 }
 
-func isOpposite(a, b point) bool {
-	return a.x == -b.x && a.y == -b.y
+func waitForEndMenu(eventCh <-chan inputEvent, errCh <-chan error) bool {
+	for {
+		select {
+		case ev := <-eventCh:
+			switch ev.kind {
+			case eventRestart:
+				return true
+			case eventQuit:
+				return false
+			}
+		case err := <-errCh:
+			fmt.Printf("input error: %v\n", err)
+			return false
+		}
+	}
 }
 
-func contains(parts []point, p point) bool {
+func drainInput(eventCh <-chan inputEvent) {
+	for {
+		select {
+		case <-eventCh:
+		default:
+			return
+		}
+	}
+}
+
+func contains(parts []game.Point, p game.Point) bool {
 	for _, s := range parts {
 		if s == p {
 			return true
 		}
 	}
 	return false
-}
-
-func randomFood(snake []point) point {
-	for {
-		p := point{x: rand.Intn(boardWidth), y: rand.Intn(boardHeight)}
-		if !contains(snake, p) {
-			return p
-		}
-	}
 }
 
 func initScreen() {
