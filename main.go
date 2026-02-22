@@ -3,8 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"os"
-	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/eiannone/keyboard"
@@ -33,7 +32,7 @@ func newGame() game {
 	rand.Seed(time.Now().UnixNano())
 	g := game{
 		snake: []point{{x: boardWidth / 2, y: boardHeight / 2}},
-		dir:   point{x: 1, y: 0},
+		dir:   point{x: 0, y: 0},
 	}
 	g.food = randomFood(g.snake)
 	return g
@@ -57,23 +56,28 @@ func main() {
 
 	ticker := time.NewTicker(tickRate)
 	defer ticker.Stop()
+	started := false
 
-	clearScreen()
-	render(g)
+	initScreen()
+	defer restoreScreen()
+	render(g, started)
 
 	for !g.over {
 		select {
 		case dir := <-dirCh:
-			if !isOpposite(g.dir, dir) {
+			if !started {
+				g.dir = dir
+				started = true
+			} else if !isOpposite(g.dir, dir) {
 				g.dir = dir
 			}
 		case <-ticker.C:
-			step(&g)
-			clearScreen()
-			render(g)
+			if started {
+				step(&g)
+			}
+			render(g, started)
 		case <-quitCh:
-			clearScreen()
-			render(g)
+			render(g, started)
 			fmt.Println("Goodbye!")
 			return
 		case err := <-errCh:
@@ -82,8 +86,7 @@ func main() {
 		}
 	}
 
-	clearScreen()
-	render(g)
+	render(g, started)
 	fmt.Println("Game Over!")
 }
 
@@ -170,30 +173,37 @@ func step(g *game) {
 	}
 }
 
-func render(g game) {
-	fmt.Printf("Simple Snake (Windows console) | Score: %d\n\n", g.score)
+func render(g game, started bool) {
+	var b strings.Builder
+	b.Grow((boardWidth + 4) * (boardHeight + 8))
+	b.WriteString("\x1b[H")
+	b.WriteString(fmt.Sprintf("Simple Snake (Windows console) | Score: %d\n\n", g.score))
 	for y := 0; y < boardHeight+2; y++ {
 		for x := 0; x < boardWidth+2; x++ {
 			switch {
 			case x == 0 || y == 0 || x == boardWidth+1 || y == boardHeight+1:
-				fmt.Print("#")
+				b.WriteByte('#')
 			default:
 				p := point{x: x - 1, y: y - 1}
 				switch {
 				case p == g.food:
-					fmt.Print("*")
+					b.WriteByte('*')
 				case p == g.snake[0]:
-					fmt.Print("@")
+					b.WriteByte('@')
 				case contains(g.snake[1:], p):
-					fmt.Print("o")
+					b.WriteByte('o')
 				default:
-					fmt.Print(" ")
+					b.WriteByte(' ')
 				}
 			}
 		}
-		fmt.Println()
+		b.WriteByte('\n')
 	}
-	fmt.Println("\nControls: WASD or Arrow Keys to move, Q/Esc to quit.")
+	b.WriteString("\nControls: WASD or Arrow Keys to move, Q/Esc to quit.\n")
+	if !started {
+		b.WriteString("Press any direction key to start.\n")
+	}
+	fmt.Print(b.String())
 }
 
 func isOpposite(a, b point) bool {
@@ -218,8 +228,10 @@ func randomFood(snake []point) point {
 	}
 }
 
-func clearScreen() {
-	cmd := exec.Command("cmd", "/c", "cls")
-	cmd.Stdout = os.Stdout
-	_ = cmd.Run()
+func initScreen() {
+	fmt.Print("\x1b[2J\x1b[H\x1b[?25l")
+}
+
+func restoreScreen() {
+	fmt.Print("\x1b[?25h")
 }
