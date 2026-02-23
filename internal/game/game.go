@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+const (
+	DefaultFoodsPerLevel = 5
+)
+
 type Point struct {
 	X int
 	Y int
@@ -21,8 +25,9 @@ var (
 )
 
 type Config struct {
-	Width  int
-	Height int
+	Width         int
+	Height        int
+	FoodsPerLevel int
 }
 
 type RNG interface {
@@ -30,16 +35,28 @@ type RNG interface {
 }
 
 type State struct {
-	width   int
-	height  int
-	snake   []Point
-	dir     Direction
-	food    Point
-	score   int
-	started bool
-	over    bool
-	won     bool
-	rng     RNG
+	width         int
+	height        int
+	foodsPerLevel int
+	snake         []Point
+	dir           Direction
+	food          Point
+	score         int
+	foodEaten     int
+	level         int
+	started       bool
+	over          bool
+	won           bool
+	startedAt     time.Time
+	endedAt       time.Time
+	runFinalized  bool
+	bestScore     int
+	bestLength    int
+	bestDuration  time.Duration
+	runsPlayed    int
+	totalFood     int
+	totalPlayTime time.Duration
+	rng           RNG
 }
 
 func New(cfg Config, rng RNG) *State {
@@ -49,26 +66,37 @@ func New(cfg Config, rng RNG) *State {
 	if cfg.Height <= 0 {
 		cfg.Height = 15
 	}
+	if cfg.FoodsPerLevel <= 0 {
+		cfg.FoodsPerLevel = DefaultFoodsPerLevel
+	}
 	if rng == nil {
 		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
 
 	s := &State{
-		width:  cfg.Width,
-		height: cfg.Height,
-		rng:    rng,
+		width:         cfg.Width,
+		height:        cfg.Height,
+		foodsPerLevel: cfg.FoodsPerLevel,
+		rng:           rng,
 	}
 	s.Reset()
 	return s
 }
 
 func (s *State) Reset() {
+	s.finalizeRun(time.Now())
+
 	s.snake = []Point{{X: s.width / 2, Y: s.height / 2}}
 	s.dir = DirNone
 	s.score = 0
+	s.foodEaten = 0
+	s.level = 1
 	s.started = false
 	s.over = false
 	s.won = false
+	s.startedAt = time.Time{}
+	s.endedAt = time.Time{}
+	s.runFinalized = false
 	if !s.placeFood() {
 		s.over = true
 		s.won = true
@@ -82,6 +110,7 @@ func (s *State) SetDirection(dir Direction) bool {
 	if !s.started {
 		s.dir = dir
 		s.started = true
+		s.startedAt = time.Now()
 		return true
 	}
 	if isOpposite(s.dir, dir) {
@@ -96,24 +125,33 @@ func (s *State) Tick() {
 		return
 	}
 
+	now := time.Now()
 	head := s.snake[0]
 	next := Point{X: head.X + dirX(s.dir), Y: head.Y + dirY(s.dir)}
 
 	if next.X < 0 || next.Y < 0 || next.X >= s.width || next.Y >= s.height {
 		s.over = true
+		s.endedAt = now
+		s.finalizeRun(now)
 		return
 	}
 	if contains(s.snake, next) {
 		s.over = true
+		s.endedAt = now
+		s.finalizeRun(now)
 		return
 	}
 
 	s.snake = append([]Point{next}, s.snake...)
 	if next == s.food {
 		s.score++
+		s.foodEaten++
+		s.level = 1 + s.foodEaten/s.foodsPerLevel
 		if !s.placeFood() {
 			s.over = true
 			s.won = true
+			s.endedAt = now
+			s.finalizeRun(now)
 		}
 		return
 	}
@@ -135,12 +173,35 @@ func (s *State) Snake() []Point {
 	return out
 }
 
+func (s *State) SnakeLength() int {
+	return len(s.snake)
+}
+
 func (s *State) Food() Point {
 	return s.food
 }
 
 func (s *State) Score() int {
 	return s.score
+}
+
+func (s *State) FoodEaten() int {
+	return s.foodEaten
+}
+
+func (s *State) Level() int {
+	return s.level
+}
+
+func (s *State) FoodsToNextLevel() int {
+	if s.foodsPerLevel <= 0 {
+		return 0
+	}
+	rem := s.foodsPerLevel - (s.foodEaten % s.foodsPerLevel)
+	if rem <= 0 {
+		return s.foodsPerLevel
+	}
+	return rem
 }
 
 func (s *State) Started() bool {
@@ -157,6 +218,70 @@ func (s *State) IsWon() bool {
 
 func (s *State) Direction() Direction {
 	return s.dir
+}
+
+func (s *State) Elapsed() time.Duration {
+	if !s.started || s.startedAt.IsZero() {
+		return 0
+	}
+	if s.over && !s.endedAt.IsZero() {
+		d := s.endedAt.Sub(s.startedAt)
+		if d < 0 {
+			return 0
+		}
+		return d
+	}
+	d := time.Since(s.startedAt)
+	if d < 0 {
+		return 0
+	}
+	return d
+}
+
+func (s *State) BestScore() int {
+	return s.bestScore
+}
+
+func (s *State) BestLength() int {
+	return s.bestLength
+}
+
+func (s *State) BestDuration() time.Duration {
+	return s.bestDuration
+}
+
+func (s *State) RunsPlayed() int {
+	return s.runsPlayed
+}
+
+func (s *State) TotalFoodEaten() int {
+	return s.totalFood
+}
+
+func (s *State) TotalPlayTime() time.Duration {
+	return s.totalPlayTime
+}
+
+func (s *State) TickInterval(base, min, levelStep time.Duration) time.Duration {
+	if base <= 0 {
+		return time.Millisecond
+	}
+	if levelStep < 0 {
+		levelStep = 0
+	}
+	if min <= 0 {
+		min = time.Millisecond
+	}
+
+	lvl := s.level - 1
+	if lvl < 0 {
+		lvl = 0
+	}
+	interval := base - time.Duration(lvl)*levelStep
+	if interval < min {
+		return min
+	}
+	return interval
 }
 
 func (s *State) placeFood() bool {
@@ -182,6 +307,35 @@ func (s *State) placeFood() bool {
 
 	s.food = available[s.rng.Intn(len(available))]
 	return true
+}
+
+func (s *State) finalizeRun(now time.Time) {
+	if s.runFinalized || !s.started {
+		return
+	}
+	if s.endedAt.IsZero() {
+		s.endedAt = now
+	}
+	duration := s.endedAt.Sub(s.startedAt)
+	if duration < 0 {
+		duration = 0
+	}
+
+	s.runsPlayed++
+	s.totalFood += s.foodEaten
+	s.totalPlayTime += duration
+
+	if s.score > s.bestScore {
+		s.bestScore = s.score
+	}
+	if len(s.snake) > s.bestLength {
+		s.bestLength = len(s.snake)
+	}
+	if duration > s.bestDuration {
+		s.bestDuration = duration
+	}
+
+	s.runFinalized = true
 }
 
 func isCardinal(dir Direction) bool {

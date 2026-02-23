@@ -19,11 +19,13 @@ const (
 	boardHeight         = 15
 	defaultCellSize     = 32
 	defaultPadding      = 16
-	defaultHUDHeight    = 56
+	defaultHUDHeight    = 92
 	minCellSize         = 12
 	defaultWindowWidth  = boardWidth*defaultCellSize + defaultPadding*2
 	defaultWindowHeight = boardHeight*defaultCellSize + defaultPadding*2 + defaultHUDHeight
-	tickRate            = 140 * time.Millisecond
+	baseTick            = 140 * time.Millisecond
+	minTick             = 70 * time.Millisecond
+	levelStep           = 8 * time.Millisecond
 )
 
 var (
@@ -36,8 +38,9 @@ var (
 )
 
 type app struct {
-	state      *game.State
-	lastTickAt time.Time
+	state        *game.State
+	lastTickAt   time.Time
+	tickInterval time.Duration
 }
 
 type sceneLayout struct {
@@ -52,13 +55,15 @@ type sceneLayout struct {
 	hudY          int
 	hudLine2Y     int
 	hudLine3Y     int
+	hudLine4Y     int
 }
 
 func newApp() *app {
 	state := game.New(game.Config{Width: boardWidth, Height: boardHeight}, nil)
 	return &app{
-		state:      state,
-		lastTickAt: time.Now(),
+		state:        state,
+		lastTickAt:   time.Now(),
+		tickInterval: state.TickInterval(baseTick, minTick, levelStep),
 	}
 }
 
@@ -74,6 +79,7 @@ func (a *app) Update() error {
 	if a.state.IsOver() {
 		if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 			a.state.Reset()
+			a.tickInterval = a.state.TickInterval(baseTick, minTick, levelStep)
 			a.lastTickAt = time.Now()
 		}
 		return nil
@@ -84,9 +90,10 @@ func (a *app) Update() error {
 	}
 
 	now := time.Now()
-	for now.Sub(a.lastTickAt) >= tickRate {
+	for now.Sub(a.lastTickAt) >= a.tickInterval {
 		a.state.Tick()
-		a.lastTickAt = a.lastTickAt.Add(tickRate)
+		a.lastTickAt = a.lastTickAt.Add(a.tickInterval)
+		a.tickInterval = a.state.TickInterval(baseTick, minTick, levelStep)
 		if a.state.IsOver() {
 			break
 		}
@@ -130,16 +137,31 @@ func (a *app) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, x, y, size, size, c)
 	}
 
-	hud := fmt.Sprintf("SNAKE | Score: %d", a.state.Score())
-	ebitenutil.DebugPrintAt(screen, hud, defaultPadding, lay.hudY)
-	ebitenutil.DebugPrintAt(screen, "WASD/Arrows move | F11 fullscreen | Q/Esc quit", defaultPadding, lay.hudLine2Y)
+	speed := 0.0
+	if a.tickInterval > 0 {
+		speed = 1 / a.tickInterval.Seconds()
+	}
 
+	line1 := fmt.Sprintf("Score:%d  Length:%d  Level:%d", a.state.Score(), a.state.SnakeLength(), a.state.Level())
+	line2 := fmt.Sprintf("Food:%d  NextLvl:%d  Time:%s  Speed:%.1f/s", a.state.FoodEaten(), a.state.FoodsToNextLevel(), formatDuration(a.state.Elapsed()), speed)
+	line3 := fmt.Sprintf("BestScore:%d  BestLen:%d  BestTime:%s  Runs:%d", a.state.BestScore(), a.state.BestLength(), formatDuration(a.state.BestDuration()), a.state.RunsPlayed())
+
+	ebitenutil.DebugPrintAt(screen, line1, defaultPadding, lay.hudY)
+	ebitenutil.DebugPrintAt(screen, line2, defaultPadding, lay.hudLine2Y)
+	ebitenutil.DebugPrintAt(screen, line3, defaultPadding, lay.hudLine3Y)
+
+	msg := "WASD/Arrows move | F11 fullscreen | Q/Esc quit"
 	if !a.state.Started() {
-		ebitenutil.DebugPrintAt(screen, "Press any direction key to start", defaultPadding, lay.hudLine3Y)
+		msg = "Press any direction key to start"
 	}
 	if a.state.IsOver() {
-		ebitenutil.DebugPrintAt(screen, "Game Over | R restart | Q/Esc quit", defaultPadding, lay.hudLine3Y)
+		if a.state.IsWon() {
+			msg = "You win! R restart | Q/Esc quit"
+		} else {
+			msg = "Game Over | R restart | Q/Esc quit"
+		}
 	}
+	ebitenutil.DebugPrintAt(screen, msg, defaultPadding, lay.hudLine4Y)
 }
 
 func (a *app) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -218,6 +240,7 @@ func computeLayout(screenW, screenH int) sceneLayout {
 		hudY:          defaultPadding,
 		hudLine2Y:     defaultPadding + 20,
 		hudLine3Y:     defaultPadding + 36,
+		hudLine4Y:     defaultPadding + 54,
 	}
 }
 
@@ -233,4 +256,14 @@ func maxFloat(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+func formatDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	totalSeconds := int(d.Seconds())
+	minutes := totalSeconds / 60
+	seconds := totalSeconds % 60
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
 }

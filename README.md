@@ -56,5 +56,10 @@ Use helper tasks:
 - `R` restart (game over screen)
 - `F11` toggle fullscreen (graphic mode)
 
+## Sprint A Features
+- Live stats bar in both modes: score, snake length, level, food eaten, foods to next level, elapsed time, and speed.
+- Session best stats: best score, best length, best survival time, total runs, and total play time.
+- Level progression: level increases every 5 food items, and movement speed increases each level (with a minimum speed cap).
+
 ## CI
 - GitHub Actions runs `go vet ./...`, `go test ./...`, and `go build ./...` on pushes and pull requests.
