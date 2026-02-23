@@ -15,19 +15,15 @@ import (
 )
 
 const (
-	boardWidth    = 20
-	boardHeight   = 15
-	cellSize      = 32
-	padding       = 16
-	hudHeight     = 56
-	tickRate      = 140 * time.Millisecond
-	boardPixelW   = boardWidth * cellSize
-	boardPixelH   = boardHeight * cellSize
-	windowWidth   = boardPixelW + padding*2
-	windowHeight  = boardPixelH + padding*2 + hudHeight
-	gridLineWidth = 1
-	snakeInset    = 2
-	foodInset     = 6
+	boardWidth          = 20
+	boardHeight         = 15
+	defaultCellSize     = 32
+	defaultPadding      = 16
+	defaultHUDHeight    = 56
+	minCellSize         = 12
+	defaultWindowWidth  = boardWidth*defaultCellSize + defaultPadding*2
+	defaultWindowHeight = boardHeight*defaultCellSize + defaultPadding*2 + defaultHUDHeight
+	tickRate            = 140 * time.Millisecond
 )
 
 var (
@@ -42,6 +38,20 @@ var (
 type app struct {
 	state      *game.State
 	lastTickAt time.Time
+}
+
+type sceneLayout struct {
+	boardX        float64
+	boardY        float64
+	cell          float64
+	boardPixelW   float64
+	boardPixelH   float64
+	gridLineWidth float64
+	snakeInset    float64
+	foodInset     float64
+	hudY          int
+	hudLine2Y     int
+	hudLine3Y     int
 }
 
 func newApp() *app {
@@ -88,52 +98,55 @@ func (a *app) Update() error {
 func (a *app) Draw(screen *ebiten.Image) {
 	screen.Fill(bgColor)
 
-	boardX := padding
-	boardY := padding + hudHeight
+	sw, sh := screen.Bounds().Dx(), screen.Bounds().Dy()
+	lay := computeLayout(sw, sh)
 
-	ebitenutil.DrawRect(screen, float64(boardX), float64(boardY), float64(boardPixelW), float64(boardPixelH), boardColor)
+	ebitenutil.DrawRect(screen, lay.boardX, lay.boardY, lay.boardPixelW, lay.boardPixelH, boardColor)
 
 	for y := 0; y <= boardHeight; y++ {
-		lineY := boardY + y*cellSize
-		ebitenutil.DrawRect(screen, float64(boardX), float64(lineY), float64(boardPixelW), gridLineWidth, gridColor)
+		lineY := lay.boardY + float64(y)*lay.cell
+		ebitenutil.DrawRect(screen, lay.boardX, lineY, lay.boardPixelW, lay.gridLineWidth, gridColor)
 	}
 	for x := 0; x <= boardWidth; x++ {
-		lineX := boardX + x*cellSize
-		ebitenutil.DrawRect(screen, float64(lineX), float64(boardY), gridLineWidth, float64(boardPixelH), gridColor)
+		lineX := lay.boardX + float64(x)*lay.cell
+		ebitenutil.DrawRect(screen, lineX, lay.boardY, lay.gridLineWidth, lay.boardPixelH, gridColor)
 	}
 
 	food := a.state.Food()
-	foodX := boardX + food.X*cellSize + foodInset
-	foodY := boardY + food.Y*cellSize + foodInset
-	foodSize := cellSize - foodInset*2
-	ebitenutil.DrawRect(screen, float64(foodX), float64(foodY), float64(foodSize), float64(foodSize), foodColor)
+	foodX := lay.boardX + float64(food.X)*lay.cell + lay.foodInset
+	foodY := lay.boardY + float64(food.Y)*lay.cell + lay.foodInset
+	foodSize := lay.cell - lay.foodInset*2
+	ebitenutil.DrawRect(screen, foodX, foodY, foodSize, foodSize, foodColor)
 
 	snake := a.state.Snake()
 	for i, p := range snake {
-		x := boardX + p.X*cellSize + snakeInset
-		y := boardY + p.Y*cellSize + snakeInset
-		size := cellSize - snakeInset*2
+		x := lay.boardX + float64(p.X)*lay.cell + lay.snakeInset
+		y := lay.boardY + float64(p.Y)*lay.cell + lay.snakeInset
+		size := lay.cell - lay.snakeInset*2
 		c := snakeBodyColor
 		if i == 0 {
 			c = snakeHeadColor
 		}
-		ebitenutil.DrawRect(screen, float64(x), float64(y), float64(size), float64(size), c)
+		ebitenutil.DrawRect(screen, x, y, size, size, c)
 	}
 
 	hud := fmt.Sprintf("SNAKE | Score: %d", a.state.Score())
-	ebitenutil.DebugPrintAt(screen, hud, padding, padding)
-	ebitenutil.DebugPrintAt(screen, "WASD/Arrows move | F11 fullscreen | Q/Esc quit", padding, padding+20)
+	ebitenutil.DebugPrintAt(screen, hud, defaultPadding, lay.hudY)
+	ebitenutil.DebugPrintAt(screen, "WASD/Arrows move | F11 fullscreen | Q/Esc quit", defaultPadding, lay.hudLine2Y)
 
 	if !a.state.Started() {
-		ebitenutil.DebugPrintAt(screen, "Press any direction key to start", padding, padding+36)
+		ebitenutil.DebugPrintAt(screen, "Press any direction key to start", defaultPadding, lay.hudLine3Y)
 	}
 	if a.state.IsOver() {
-		ebitenutil.DebugPrintAt(screen, "Game Over | R restart | Q/Esc quit", padding, padding+36)
+		ebitenutil.DebugPrintAt(screen, "Game Over | R restart | Q/Esc quit", defaultPadding, lay.hudLine3Y)
 	}
 }
 
-func (a *app) Layout(_, _ int) (int, int) {
-	return windowWidth, windowHeight
+func (a *app) Layout(outsideWidth, outsideHeight int) (int, int) {
+	if outsideWidth <= 0 || outsideHeight <= 0 {
+		return defaultWindowWidth, defaultWindowHeight
+	}
+	return outsideWidth, outsideHeight
 }
 
 func readDirection() (game.Direction, bool) {
@@ -155,7 +168,7 @@ func main() {
 	fullscreen := flag.Bool("fullscreen", false, "start in fullscreen mode")
 	flag.Parse()
 
-	ebiten.SetWindowSize(windowWidth, windowHeight)
+	ebiten.SetWindowSize(defaultWindowWidth, defaultWindowHeight)
 	ebiten.SetWindowTitle("Snake - Graphic Mode")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetFullscreen(*fullscreen)
@@ -163,4 +176,61 @@ func main() {
 	if err := ebiten.RunGame(newApp()); err != nil && err != ebiten.Termination {
 		log.Fatal(err)
 	}
+}
+
+func computeLayout(screenW, screenH int) sceneLayout {
+	usableW := float64(screenW - defaultPadding*2)
+	usableH := float64(screenH - defaultHUDHeight - defaultPadding*2)
+	if usableW < 1 {
+		usableW = 1
+	}
+	if usableH < 1 {
+		usableH = 1
+	}
+
+	cell := minFloat(usableW/float64(boardWidth), usableH/float64(boardHeight))
+	if cell < minCellSize {
+		cell = minCellSize
+	}
+
+	boardW := cell * float64(boardWidth)
+	boardH := cell * float64(boardHeight)
+	boardX := (float64(screenW) - boardW) / 2
+	boardY := float64(defaultPadding+defaultHUDHeight) + (usableH-boardH)/2
+	minBoardY := float64(defaultPadding + defaultHUDHeight)
+	if boardY < minBoardY {
+		boardY = minBoardY
+	}
+
+	gridLine := maxFloat(1, cell*0.04)
+	snakeInset := maxFloat(1, cell*0.08)
+	foodInset := maxFloat(2, cell*0.22)
+
+	return sceneLayout{
+		boardX:        boardX,
+		boardY:        boardY,
+		cell:          cell,
+		boardPixelW:   boardW,
+		boardPixelH:   boardH,
+		gridLineWidth: gridLine,
+		snakeInset:    snakeInset,
+		foodInset:     foodInset,
+		hudY:          defaultPadding,
+		hudLine2Y:     defaultPadding + 20,
+		hudLine3Y:     defaultPadding + 36,
+	}
+}
+
+func minFloat(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
 }

@@ -63,6 +63,20 @@ func TestOppositeDirectionIsRejected(t *testing.T) {
 	}
 }
 
+func TestInvalidDirectionIsRejected(t *testing.T) {
+	g := New(Config{Width: 6, Height: 6}, &sequenceRNG{})
+
+	if g.SetDirection(DirNone) {
+		t.Fatalf("none direction should be rejected")
+	}
+	if g.SetDirection(Direction{X: 1, Y: 1}) {
+		t.Fatalf("diagonal direction should be rejected")
+	}
+	if g.Started() {
+		t.Fatalf("game should not start on invalid direction")
+	}
+}
+
 func TestWallCollisionEndsGame(t *testing.T) {
 	g := New(Config{Width: 4, Height: 4}, &sequenceRNG{})
 	g.snake = []Point{{X: 0, Y: 0}}
@@ -133,6 +147,32 @@ func TestPlaceFoodAvoidsSnake(t *testing.T) {
 	}
 	if g.Food() != (Point{X: 1, Y: 1}) {
 		t.Fatalf("unexpected food position: got=%v want={1 1}", g.Food())
+	}
+}
+
+func TestWinningMoveWhenBoardFills(t *testing.T) {
+	g := New(Config{Width: 2, Height: 1}, &sequenceRNG{values: []int{0}})
+	g.snake = []Point{{X: 0, Y: 0}}
+	g.dir = DirRight
+	g.started = true
+	g.over = false
+	g.won = false
+	g.score = 0
+	g.food = Point{X: 1, Y: 0}
+
+	g.Tick()
+
+	if !g.IsOver() {
+		t.Fatalf("expected game over after filling board")
+	}
+	if !g.IsWon() {
+		t.Fatalf("expected win state after filling board")
+	}
+	if g.Score() != 1 {
+		t.Fatalf("unexpected score after winning move: got=%d want=1", g.Score())
+	}
+	if len(g.Snake()) != 2 {
+		t.Fatalf("unexpected snake length after winning move: got=%d want=2", len(g.Snake()))
 	}
 }
 

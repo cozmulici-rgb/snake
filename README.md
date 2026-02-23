@@ -12,7 +12,7 @@ Snake game with both console and graphical modes.
 From this folder:
 
 ```powershell
-go fmt ./...
+go test ./...
 go run .
 ```
 
@@ -35,6 +35,18 @@ Start directly in fullscreen:
 go run ./cmd/graphic --fullscreen
 ```
 
+### Dev script (PowerShell)
+Use helper tasks:
+
+```powershell
+.\scripts\dev.ps1 console
+.\scripts\dev.ps1 graphic
+.\scripts\dev.ps1 graphic-fullscreen
+.\scripts\dev.ps1 test
+.\scripts\dev.ps1 build
+.\scripts\dev.ps1 fmt
+```
+
 ## Controls
 - `W` / `Up Arrow` up
 - `A` / `Left Arrow` left
@@ -43,3 +55,6 @@ go run ./cmd/graphic --fullscreen
 - `Q` or `Esc` quit
 - `R` restart (game over screen)
 - `F11` toggle fullscreen (graphic mode)
+
+## CI
+- GitHub Actions runs `go vet ./...`, `go test ./...`, and `go build ./...` on pushes and pull requests.
