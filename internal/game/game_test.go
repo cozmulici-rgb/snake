@@ -1,6 +1,9 @@
 package game
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 type sequenceRNG struct {
 	values []int
@@ -48,6 +51,9 @@ func TestSetDirectionStartsGameAndMoves(t *testing.T) {
 	want := Point{X: headBefore.X + 1, Y: headBefore.Y}
 	if headAfter != want {
 		t.Fatalf("unexpected head position after tick: got=%v want=%v", headAfter, want)
+	}
+	if g.Level() != 1 {
+		t.Fatalf("unexpected initial level after movement: got=%d want=1", g.Level())
 	}
 }
 
@@ -132,6 +138,12 @@ func TestEatingFoodIncreasesScoreAndLength(t *testing.T) {
 	if contains(g.Snake(), g.Food()) {
 		t.Fatalf("food spawned on snake body after eating")
 	}
+	if g.FoodEaten() != 1 {
+		t.Fatalf("unexpected food eaten count: got=%d want=1", g.FoodEaten())
+	}
+	if g.FoodsToNextLevel() != DefaultFoodsPerLevel-1 {
+		t.Fatalf("unexpected foods-to-next-level: got=%d want=%d", g.FoodsToNextLevel(), DefaultFoodsPerLevel-1)
+	}
 }
 
 func TestPlaceFoodAvoidsSnake(t *testing.T) {
@@ -173,6 +185,87 @@ func TestWinningMoveWhenBoardFills(t *testing.T) {
 	}
 	if len(g.Snake()) != 2 {
 		t.Fatalf("unexpected snake length after winning move: got=%d want=2", len(g.Snake()))
+	}
+	if g.RunsPlayed() != 1 {
+		t.Fatalf("unexpected run count after win: got=%d want=1", g.RunsPlayed())
+	}
+}
+
+func TestLevelIncreasesEveryFoodsPerLevel(t *testing.T) {
+	g := New(Config{Width: 5, Height: 5, FoodsPerLevel: 5}, &sequenceRNG{values: []int{0}})
+	g.snake = []Point{{X: 1, Y: 1}}
+	g.dir = DirRight
+	g.started = true
+	g.over = false
+	g.foodEaten = 4
+	g.level = 1
+	g.food = Point{X: 2, Y: 1}
+
+	g.Tick()
+
+	if g.Level() != 2 {
+		t.Fatalf("expected level up after 5th food: got=%d want=2", g.Level())
+	}
+	if g.FoodsToNextLevel() != 5 {
+		t.Fatalf("unexpected foods-to-next-level after level up: got=%d want=5", g.FoodsToNextLevel())
+	}
+}
+
+func TestTickIntervalScalesWithLevelAndCaps(t *testing.T) {
+	g := New(Config{Width: 5, Height: 5}, &sequenceRNG{})
+	g.level = 1
+	got := g.TickInterval(140*time.Millisecond, 70*time.Millisecond, 8*time.Millisecond)
+	if got != 140*time.Millisecond {
+		t.Fatalf("unexpected base tick interval: got=%v want=%v", got, 140*time.Millisecond)
+	}
+
+	g.level = 6
+	got = g.TickInterval(140*time.Millisecond, 70*time.Millisecond, 8*time.Millisecond)
+	if got != 100*time.Millisecond {
+		t.Fatalf("unexpected scaled tick interval: got=%v want=%v", got, 100*time.Millisecond)
+	}
+
+	g.level = 20
+	got = g.TickInterval(140*time.Millisecond, 70*time.Millisecond, 8*time.Millisecond)
+	if got != 70*time.Millisecond {
+		t.Fatalf("unexpected capped tick interval: got=%v want=%v", got, 70*time.Millisecond)
+	}
+}
+
+func TestRunFinalizationUpdatesBestStats(t *testing.T) {
+	g := New(Config{Width: 4, Height: 4}, &sequenceRNG{})
+	g.snake = []Point{{X: 0, Y: 0}, {X: 1, Y: 0}, {X: 2, Y: 0}}
+	g.dir = DirLeft
+	g.started = true
+	g.startedAt = time.Now().Add(-2 * time.Second)
+	g.score = 2
+	g.foodEaten = 2
+	g.level = 1
+	g.over = false
+	g.food = Point{X: 3, Y: 3}
+
+	g.Tick()
+
+	if !g.IsOver() {
+		t.Fatalf("expected run to end")
+	}
+	if g.RunsPlayed() != 1 {
+		t.Fatalf("unexpected runs played: got=%d want=1", g.RunsPlayed())
+	}
+	if g.BestScore() != 2 {
+		t.Fatalf("unexpected best score: got=%d want=2", g.BestScore())
+	}
+	if g.BestLength() != 3 {
+		t.Fatalf("unexpected best length: got=%d want=3", g.BestLength())
+	}
+	if g.BestDuration() <= 0 {
+		t.Fatalf("expected positive best duration")
+	}
+	if g.TotalFoodEaten() != 2 {
+		t.Fatalf("unexpected total food eaten: got=%d want=2", g.TotalFoodEaten())
+	}
+	if g.TotalPlayTime() <= 0 {
+		t.Fatalf("expected positive total play time")
 	}
 }
 

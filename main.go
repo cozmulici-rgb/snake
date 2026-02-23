@@ -13,7 +13,9 @@ import (
 const (
 	boardWidth  = 20
 	boardHeight = 15
-	tickRate    = 140 * time.Millisecond
+	baseTick    = 140 * time.Millisecond
+	minTick     = 70 * time.Millisecond
+	levelStep   = 8 * time.Millisecond
 )
 
 type inputEventKind int
@@ -46,11 +48,13 @@ func main() {
 	defer restoreScreen()
 
 	cfg := game.Config{Width: boardWidth, Height: boardHeight}
+	state := game.New(cfg, nil)
+
 	for {
-		state := game.New(cfg, nil)
-		ticker := time.NewTicker(tickRate)
+		currentTick := state.TickInterval(baseTick, minTick, levelStep)
+		ticker := time.NewTicker(currentTick)
 		drainInput(eventCh)
-		render(state, false)
+		render(state, false, currentTick)
 
 		for !state.IsOver() {
 			select {
@@ -60,13 +64,18 @@ func main() {
 					state.SetDirection(ev.dir)
 				case eventQuit:
 					ticker.Stop()
-					render(state, false)
+					render(state, false, currentTick)
 					fmt.Println("Goodbye!")
 					return
 				}
 			case <-ticker.C:
 				state.Tick()
-				render(state, false)
+				nextTick := state.TickInterval(baseTick, minTick, levelStep)
+				if nextTick != currentTick {
+					ticker.Reset(nextTick)
+					currentTick = nextTick
+				}
+				render(state, false, currentTick)
 			case err := <-errCh:
 				ticker.Stop()
 				fmt.Printf("input error: %v\n", err)
@@ -75,11 +84,12 @@ func main() {
 		}
 
 		ticker.Stop()
-		render(state, true)
+		render(state, true, currentTick)
 		if !waitForEndMenu(eventCh, errCh) {
 			fmt.Println("Goodbye!")
 			return
 		}
+		state.Reset()
 	}
 }
 
@@ -136,17 +146,26 @@ func readInput(eventCh chan<- inputEvent, errCh chan<- error) {
 	}
 }
 
-func render(state *game.State, showEndMenu bool) {
+func render(state *game.State, showEndMenu bool, tickInterval time.Duration) {
 	var b strings.Builder
 	width := state.Width()
 	height := state.Height()
 	snake := state.Snake()
 	food := state.Food()
 	started := state.Started()
+	speed := 0.0
+	if tickInterval > 0 {
+		speed = 1 / tickInterval.Seconds()
+	}
 
-	b.Grow((width + 4) * (height + 8))
+	b.Grow((width + 4) * (height + 14))
 	b.WriteString("\x1b[H")
-	b.WriteString(fmt.Sprintf("Simple Snake (Windows console) | Score: %d\n\n", state.Score()))
+	b.WriteString("Snake (Console)\n")
+	b.WriteString(fmt.Sprintf("Score:%d  Length:%d  Level:%d  Food:%d  NextLvl:%d  Speed:%.1f/s  Time:%s\n",
+		state.Score(), state.SnakeLength(), state.Level(), state.FoodEaten(), state.FoodsToNextLevel(), speed, formatDuration(state.Elapsed())))
+	b.WriteString(fmt.Sprintf("BestScore:%d  BestLength:%d  BestTime:%s  Runs:%d  TotalTime:%s\n\n",
+		state.BestScore(), state.BestLength(), formatDuration(state.BestDuration()), state.RunsPlayed(), formatDuration(state.TotalPlayTime())))
+
 	for y := 0; y < height+2; y++ {
 		for x := 0; x < width+2; x++ {
 			switch {
@@ -173,7 +192,11 @@ func render(state *game.State, showEndMenu bool) {
 		b.WriteString("Press any direction key to start.\n")
 	}
 	if showEndMenu {
-		b.WriteString("Game Over! Press R to restart, Q/Esc to quit.\n")
+		if state.IsWon() {
+			b.WriteString("You win! Press R to restart, Q/Esc to quit.\n")
+		} else {
+			b.WriteString("Game Over! Press R to restart, Q/Esc to quit.\n")
+		}
 	}
 	fmt.Print(b.String())
 }
@@ -212,6 +235,16 @@ func contains(parts []game.Point, p game.Point) bool {
 		}
 	}
 	return false
+}
+
+func formatDuration(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	totalSeconds := int(d.Seconds())
+	minutes := totalSeconds / 60
+	seconds := totalSeconds % 60
+	return fmt.Sprintf("%02d:%02d", minutes, seconds)
 }
 
 func initScreen() {
