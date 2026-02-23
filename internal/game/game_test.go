@@ -364,3 +364,55 @@ func TestResetRestoresInitialState(t *testing.T) {
 		t.Fatalf("food spawned on snake after reset")
 	}
 }
+
+func TestFinalizeNowRecordsRunWithoutGameOver(t *testing.T) {
+	g := New(Config{Width: 6, Height: 6}, &sequenceRNG{})
+	g.SetDirection(DirRight)
+	g.startedAt = time.Now().Add(-time.Second)
+	g.score = 3
+	g.foodEaten = 3
+	g.level = 1
+
+	g.FinalizeNow()
+
+	if g.RunsPlayed() != 1 {
+		t.Fatalf("expected runs played to increment: got=%d want=1", g.RunsPlayed())
+	}
+	if g.BestScore() != 3 {
+		t.Fatalf("unexpected best score after finalize: got=%d want=3", g.BestScore())
+	}
+}
+
+func TestProfileExportImportRoundTrip(t *testing.T) {
+	g := New(Config{Width: 6, Height: 6}, &sequenceRNG{})
+	g.SetDirection(DirRight)
+	g.startedAt = time.Now().Add(-2 * time.Second)
+	g.score = 4
+	g.foodEaten = 4
+	g.level = 2
+	g.FinalizeNow()
+
+	p := g.Profile()
+
+	g2 := New(Config{Width: 6, Height: 6}, &sequenceRNG{})
+	g2.ApplyProfile(p)
+
+	if g2.BestScore() != g.BestScore() {
+		t.Fatalf("best score mismatch after profile import: got=%d want=%d", g2.BestScore(), g.BestScore())
+	}
+	if g2.BestLength() != g.BestLength() {
+		t.Fatalf("best length mismatch after profile import: got=%d want=%d", g2.BestLength(), g.BestLength())
+	}
+	if g2.BestDuration() != g.BestDuration() {
+		t.Fatalf("best duration mismatch after profile import: got=%v want=%v", g2.BestDuration(), g.BestDuration())
+	}
+	if g2.RunsPlayed() != g.RunsPlayed() {
+		t.Fatalf("runs mismatch after profile import: got=%d want=%d", g2.RunsPlayed(), g.RunsPlayed())
+	}
+	if g2.TotalFoodEaten() != g.TotalFoodEaten() {
+		t.Fatalf("total food mismatch after profile import: got=%d want=%d", g2.TotalFoodEaten(), g.TotalFoodEaten())
+	}
+	if g2.TotalPlayTime() != g.TotalPlayTime() {
+		t.Fatalf("total play time mismatch after profile import: got=%v want=%v", g2.TotalPlayTime(), g.TotalPlayTime())
+	}
+}
