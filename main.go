@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"snake/internal/game"
+	"snake/internal/profile"
 
 	"github.com/eiannone/keyboard"
 )
@@ -50,6 +52,13 @@ func main() {
 
 	cfg := game.Config{Width: boardWidth, Height: boardHeight}
 	state := game.New(cfg, nil)
+	profilePath := profile.DefaultPath()
+	if p, err := profile.Load(profilePath); err == nil {
+		state.ApplyProfile(p)
+	} else if !os.IsNotExist(err) {
+		fmt.Printf("warning: could not load profile: %v\n", err)
+	}
+	savedRuns := state.RunsPlayed()
 
 	for {
 		currentTick := state.TickInterval(baseTick, minTick, levelStep)
@@ -66,6 +75,8 @@ func main() {
 					state.SetDirection(ev.dir)
 				case eventQuit:
 					ticker.Stop()
+					state.FinalizeNow()
+					persistProfile(profilePath, state, &savedRuns)
 					render(state, false, paused, currentTick)
 					fmt.Println("Goodbye!")
 					return
@@ -76,6 +87,7 @@ func main() {
 			case <-ticker.C:
 				if !paused {
 					state.Tick()
+					persistProfile(profilePath, state, &savedRuns)
 					nextTick := state.TickInterval(baseTick, minTick, levelStep)
 					if nextTick != currentTick {
 						ticker.Reset(nextTick)
@@ -93,10 +105,12 @@ func main() {
 		ticker.Stop()
 		render(state, true, false, currentTick)
 		if !waitForEndMenu(eventCh, errCh) {
+			persistProfile(profilePath, state, &savedRuns)
 			fmt.Println("Goodbye!")
 			return
 		}
 		state.Reset()
+		persistProfile(profilePath, state, &savedRuns)
 	}
 }
 
@@ -292,4 +306,15 @@ func initScreen() {
 
 func restoreScreen() {
 	fmt.Print("\x1b[?25h")
+}
+
+func persistProfile(path string, state *game.State, savedRuns *int) {
+	if state.RunsPlayed() == *savedRuns {
+		return
+	}
+	if err := profile.Save(path, state.Profile()); err != nil {
+		fmt.Printf("warning: could not save profile: %v\n", err)
+		return
+	}
+	*savedRuns = state.RunsPlayed()
 }

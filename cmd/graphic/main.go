@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"image/color"
 	"log"
+	"os"
 	"time"
 
 	"snake/internal/game"
+	"snake/internal/profile"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -43,6 +45,8 @@ type app struct {
 	lastTickAt   time.Time
 	tickInterval time.Duration
 	paused       bool
+	profilePath  string
+	savedRuns    int
 }
 
 type sceneLayout struct {
@@ -63,10 +67,18 @@ type sceneLayout struct {
 
 func newApp() *app {
 	state := game.New(game.Config{Width: boardWidth, Height: boardHeight}, nil)
+	profilePath := profile.DefaultPath()
+	if p, err := profile.Load(profilePath); err == nil {
+		state.ApplyProfile(p)
+	} else if !os.IsNotExist(err) {
+		log.Printf("warning: could not load profile: %v", err)
+	}
 	return &app{
 		state:        state,
 		lastTickAt:   time.Now(),
 		tickInterval: state.TickInterval(baseTick, minTick, levelStep),
+		profilePath:  profilePath,
+		savedRuns:    state.RunsPlayed(),
 	}
 }
 
@@ -79,12 +91,16 @@ func (a *app) Update() error {
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyQ) || inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		a.state.FinalizeNow()
+		a.persistProfile()
 		return ebiten.Termination
 	}
 
 	if a.state.IsOver() {
+		a.persistProfile()
 		if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 			a.state.Reset()
+			a.persistProfile()
 			a.tickInterval = a.state.TickInterval(baseTick, minTick, levelStep)
 			a.lastTickAt = time.Now()
 			a.paused = false
@@ -102,6 +118,7 @@ func (a *app) Update() error {
 	now := time.Now()
 	for now.Sub(a.lastTickAt) >= a.tickInterval {
 		a.state.Tick()
+		a.persistProfile()
 		a.lastTickAt = a.lastTickAt.Add(a.tickInterval)
 		a.tickInterval = a.state.TickInterval(baseTick, minTick, levelStep)
 		if a.state.IsOver() {
@@ -315,4 +332,15 @@ func formatSignedDuration(d time.Duration) string {
 		return "+" + formatDuration(d)
 	}
 	return "-" + formatDuration(-d)
+}
+
+func (a *app) persistProfile() {
+	if a.state.RunsPlayed() == a.savedRuns {
+		return
+	}
+	if err := profile.Save(a.profilePath, a.state.Profile()); err != nil {
+		log.Printf("warning: could not save profile: %v", err)
+		return
+	}
+	a.savedRuns = a.state.RunsPlayed()
 }

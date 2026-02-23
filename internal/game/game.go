@@ -32,6 +32,15 @@ type Config struct {
 	ObstaclesStep int
 }
 
+type Profile struct {
+	BestScore           int   `json:"best_score"`
+	BestLength          int   `json:"best_length"`
+	BestDurationMillis  int64 `json:"best_duration_millis"`
+	RunsPlayed          int   `json:"runs_played"`
+	TotalFoodEaten      int   `json:"total_food_eaten"`
+	TotalPlayTimeMillis int64 `json:"total_play_time_millis"`
+}
+
 type RunSummary struct {
 	Score                   int
 	Length                  int
@@ -313,6 +322,49 @@ func (s *State) TotalPlayTime() time.Duration {
 
 func (s *State) LastRunSummary() (RunSummary, bool) {
 	return s.lastRun, s.hasLastRun
+}
+
+func (s *State) Profile() Profile {
+	return Profile{
+		BestScore:           s.bestScore,
+		BestLength:          s.bestLength,
+		BestDurationMillis:  s.bestDuration.Milliseconds(),
+		RunsPlayed:          s.runsPlayed,
+		TotalFoodEaten:      s.totalFood,
+		TotalPlayTimeMillis: s.totalPlayTime.Milliseconds(),
+	}
+}
+
+func (s *State) ApplyProfile(p Profile) {
+	if p.BestScore > 0 {
+		s.bestScore = p.BestScore
+	}
+	if p.BestLength > 0 {
+		s.bestLength = p.BestLength
+	}
+	if p.BestDurationMillis > 0 {
+		s.bestDuration = time.Duration(p.BestDurationMillis) * time.Millisecond
+	}
+	if p.RunsPlayed > 0 {
+		s.runsPlayed = p.RunsPlayed
+	}
+	if p.TotalFoodEaten > 0 {
+		s.totalFood = p.TotalFoodEaten
+	}
+	if p.TotalPlayTimeMillis > 0 {
+		s.totalPlayTime = time.Duration(p.TotalPlayTimeMillis) * time.Millisecond
+	}
+}
+
+func (s *State) FinalizeNow() {
+	if !s.started || s.runFinalized {
+		return
+	}
+	now := time.Now()
+	if s.endedAt.IsZero() {
+		s.endedAt = now
+	}
+	s.finalizeRun(now)
 }
 
 func (s *State) TickInterval(base, min, levelStep time.Duration) time.Duration {

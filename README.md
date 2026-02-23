@@ -68,5 +68,9 @@ Use helper tasks:
 - Pause/resume support in both modes.
 - Game-over run summary with deltas vs previous best stats.
 
+## Sprint C Features
+- Persistent profile stats across app restarts (best score/length/time, runs played, total food, total play time).
+- Profile is stored at `%APPDATA%\\snake\\profile.json` on Windows.
+
 ## CI
 - GitHub Actions runs `go vet ./...`, `go test ./...`, and `go build ./...` on pushes and pull requests.
