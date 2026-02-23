@@ -118,6 +118,22 @@ func TestSelfCollisionEndsGame(t *testing.T) {
 	}
 }
 
+func TestObstacleCollisionEndsGame(t *testing.T) {
+	g := New(Config{Width: 5, Height: 5, ObstaclesStep: 1}, &sequenceRNG{})
+	g.snake = []Point{{X: 1, Y: 1}}
+	g.dir = DirRight
+	g.started = true
+	g.over = false
+	g.food = Point{X: 4, Y: 4}
+	g.obstacles = []Point{{X: 2, Y: 1}}
+
+	g.Tick()
+
+	if !g.IsOver() {
+		t.Fatalf("expected obstacle collision to end game")
+	}
+}
+
 func TestEatingFoodIncreasesScoreAndLength(t *testing.T) {
 	g := New(Config{Width: 5, Height: 5}, &sequenceRNG{values: []int{0}})
 	g.snake = []Point{{X: 1, Y: 1}}
@@ -162,6 +178,24 @@ func TestPlaceFoodAvoidsSnake(t *testing.T) {
 	}
 }
 
+func TestPlaceFoodAvoidsObstacles(t *testing.T) {
+	g := New(Config{Width: 3, Height: 2, ObstaclesStep: 1}, &sequenceRNG{values: []int{0}})
+	g.snake = []Point{{X: 0, Y: 0}}
+	g.obstacles = []Point{
+		{X: 1, Y: 0},
+		{X: 2, Y: 0},
+		{X: 0, Y: 1},
+		{X: 1, Y: 1},
+	}
+
+	if !g.placeFood() {
+		t.Fatalf("expected food placement to succeed")
+	}
+	if g.Food() != (Point{X: 2, Y: 1}) {
+		t.Fatalf("unexpected food position with obstacles: got=%v want={2 1}", g.Food())
+	}
+}
+
 func TestWinningMoveWhenBoardFills(t *testing.T) {
 	g := New(Config{Width: 2, Height: 1}, &sequenceRNG{values: []int{0}})
 	g.snake = []Point{{X: 0, Y: 0}}
@@ -192,7 +226,7 @@ func TestWinningMoveWhenBoardFills(t *testing.T) {
 }
 
 func TestLevelIncreasesEveryFoodsPerLevel(t *testing.T) {
-	g := New(Config{Width: 5, Height: 5, FoodsPerLevel: 5}, &sequenceRNG{values: []int{0}})
+	g := New(Config{Width: 5, Height: 5, FoodsPerLevel: 5, ObstaclesStep: 1}, &sequenceRNG{values: []int{0}})
 	g.snake = []Point{{X: 1, Y: 1}}
 	g.dir = DirRight
 	g.started = true
@@ -208,6 +242,12 @@ func TestLevelIncreasesEveryFoodsPerLevel(t *testing.T) {
 	}
 	if g.FoodsToNextLevel() != 5 {
 		t.Fatalf("unexpected foods-to-next-level after level up: got=%d want=5", g.FoodsToNextLevel())
+	}
+	if g.ObstacleCount() != 1 {
+		t.Fatalf("unexpected obstacle count after level up: got=%d want=1", g.ObstacleCount())
+	}
+	if contains(g.Obstacles(), g.Snake()[0]) {
+		t.Fatalf("obstacle spawned on snake")
 	}
 }
 
@@ -266,6 +306,22 @@ func TestRunFinalizationUpdatesBestStats(t *testing.T) {
 	}
 	if g.TotalPlayTime() <= 0 {
 		t.Fatalf("expected positive total play time")
+	}
+	summary, ok := g.LastRunSummary()
+	if !ok {
+		t.Fatalf("expected last run summary")
+	}
+	if summary.Score != 2 || summary.Length != 3 || summary.FoodEaten != 2 {
+		t.Fatalf("unexpected run summary payload: %+v", summary)
+	}
+	if !summary.NewBestScore || !summary.NewBestLength || !summary.NewBestDuration {
+		t.Fatalf("expected new best flags on first finalized run: %+v", summary)
+	}
+	if summary.ScoreDeltaVsPrevBest != 2 {
+		t.Fatalf("unexpected score delta: got=%d want=2", summary.ScoreDeltaVsPrevBest)
+	}
+	if summary.LengthDeltaVsPrevBest != 3 {
+		t.Fatalf("unexpected length delta: got=%d want=3", summary.LengthDeltaVsPrevBest)
 	}
 }
 

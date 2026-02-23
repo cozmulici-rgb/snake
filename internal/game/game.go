@@ -7,6 +7,7 @@ import (
 
 const (
 	DefaultFoodsPerLevel = 5
+	DefaultObstaclesStep = 2
 )
 
 type Point struct {
@@ -28,6 +29,22 @@ type Config struct {
 	Width         int
 	Height        int
 	FoodsPerLevel int
+	ObstaclesStep int
+}
+
+type RunSummary struct {
+	Score                   int
+	Length                  int
+	FoodEaten               int
+	Level                   int
+	Duration                time.Duration
+	Won                     bool
+	ScoreDeltaVsPrevBest    int
+	LengthDeltaVsPrevBest   int
+	DurationDeltaVsPrevBest time.Duration
+	NewBestScore            bool
+	NewBestLength           bool
+	NewBestDuration         bool
 }
 
 type RNG interface {
@@ -38,7 +55,9 @@ type State struct {
 	width         int
 	height        int
 	foodsPerLevel int
+	obstaclesStep int
 	snake         []Point
+	obstacles     []Point
 	dir           Direction
 	food          Point
 	score         int
@@ -56,6 +75,8 @@ type State struct {
 	runsPlayed    int
 	totalFood     int
 	totalPlayTime time.Duration
+	lastRun       RunSummary
+	hasLastRun    bool
 	rng           RNG
 }
 
@@ -69,6 +90,12 @@ func New(cfg Config, rng RNG) *State {
 	if cfg.FoodsPerLevel <= 0 {
 		cfg.FoodsPerLevel = DefaultFoodsPerLevel
 	}
+	if cfg.ObstaclesStep < 0 {
+		cfg.ObstaclesStep = 0
+	}
+	if cfg.ObstaclesStep == 0 {
+		cfg.ObstaclesStep = DefaultObstaclesStep
+	}
 	if rng == nil {
 		rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 	}
@@ -77,6 +104,7 @@ func New(cfg Config, rng RNG) *State {
 		width:         cfg.Width,
 		height:        cfg.Height,
 		foodsPerLevel: cfg.FoodsPerLevel,
+		obstaclesStep: cfg.ObstaclesStep,
 		rng:           rng,
 	}
 	s.Reset()
@@ -87,6 +115,7 @@ func (s *State) Reset() {
 	s.finalizeRun(time.Now())
 
 	s.snake = []Point{{X: s.width / 2, Y: s.height / 2}}
+	s.obstacles = nil
 	s.dir = DirNone
 	s.score = 0
 	s.foodEaten = 0
@@ -141,12 +170,22 @@ func (s *State) Tick() {
 		s.finalizeRun(now)
 		return
 	}
+	if contains(s.obstacles, next) {
+		s.over = true
+		s.endedAt = now
+		s.finalizeRun(now)
+		return
+	}
 
 	s.snake = append([]Point{next}, s.snake...)
 	if next == s.food {
+		prevLevel := s.level
 		s.score++
 		s.foodEaten++
 		s.level = 1 + s.foodEaten/s.foodsPerLevel
+		if s.level != prevLevel {
+			s.regenerateObstacles()
+		}
 		if !s.placeFood() {
 			s.over = true
 			s.won = true
@@ -175,6 +214,16 @@ func (s *State) Snake() []Point {
 
 func (s *State) SnakeLength() int {
 	return len(s.snake)
+}
+
+func (s *State) Obstacles() []Point {
+	out := make([]Point, len(s.obstacles))
+	copy(out, s.obstacles)
+	return out
+}
+
+func (s *State) ObstacleCount() int {
+	return len(s.obstacles)
 }
 
 func (s *State) Food() Point {
@@ -262,6 +311,10 @@ func (s *State) TotalPlayTime() time.Duration {
 	return s.totalPlayTime
 }
 
+func (s *State) LastRunSummary() (RunSummary, bool) {
+	return s.lastRun, s.hasLastRun
+}
+
 func (s *State) TickInterval(base, min, levelStep time.Duration) time.Duration {
 	if base <= 0 {
 		return time.Millisecond
@@ -286,7 +339,7 @@ func (s *State) TickInterval(base, min, levelStep time.Duration) time.Duration {
 
 func (s *State) placeFood() bool {
 	total := s.width * s.height
-	if len(s.snake) >= total {
+	if len(s.snake)+len(s.obstacles) >= total {
 		return false
 	}
 
@@ -294,8 +347,11 @@ func (s *State) placeFood() bool {
 	for _, p := range s.snake {
 		occupied[p.Y*s.width+p.X] = true
 	}
+	for _, p := range s.obstacles {
+		occupied[p.Y*s.width+p.X] = true
+	}
 
-	available := make([]Point, 0, total-len(s.snake))
+	available := make([]Point, 0, total-len(s.snake)-len(s.obstacles))
 	for y := 0; y < s.height; y++ {
 		for x := 0; x < s.width; x++ {
 			idx := y*s.width + x
@@ -307,6 +363,44 @@ func (s *State) placeFood() bool {
 
 	s.food = available[s.rng.Intn(len(available))]
 	return true
+}
+
+func (s *State) regenerateObstacles() {
+	target := (s.level - 1) * s.obstaclesStep
+	if target < 0 {
+		target = 0
+	}
+	total := s.width * s.height
+	maxObstacles := total - len(s.snake) - 1 // keep at least one cell for food
+	if maxObstacles < 0 {
+		maxObstacles = 0
+	}
+	if target > maxObstacles {
+		target = maxObstacles
+	}
+
+	candidates := make([]Point, 0, total-len(s.snake))
+	occupied := make([]bool, total)
+	for _, p := range s.snake {
+		occupied[p.Y*s.width+p.X] = true
+	}
+
+	for y := 0; y < s.height; y++ {
+		for x := 0; x < s.width; x++ {
+			idx := y*s.width + x
+			if !occupied[idx] {
+				candidates = append(candidates, Point{X: x, Y: y})
+			}
+		}
+	}
+
+	s.obstacles = s.obstacles[:0]
+	for i := 0; i < target && len(candidates) > 0; i++ {
+		j := s.rng.Intn(len(candidates))
+		s.obstacles = append(s.obstacles, candidates[j])
+		candidates[j] = candidates[len(candidates)-1]
+		candidates = candidates[:len(candidates)-1]
+	}
 }
 
 func (s *State) finalizeRun(now time.Time) {
@@ -321,6 +415,10 @@ func (s *State) finalizeRun(now time.Time) {
 		duration = 0
 	}
 
+	prevBestScore := s.bestScore
+	prevBestLength := s.bestLength
+	prevBestDuration := s.bestDuration
+
 	s.runsPlayed++
 	s.totalFood += s.foodEaten
 	s.totalPlayTime += duration
@@ -334,6 +432,22 @@ func (s *State) finalizeRun(now time.Time) {
 	if duration > s.bestDuration {
 		s.bestDuration = duration
 	}
+
+	s.lastRun = RunSummary{
+		Score:                   s.score,
+		Length:                  len(s.snake),
+		FoodEaten:               s.foodEaten,
+		Level:                   s.level,
+		Duration:                duration,
+		Won:                     s.won,
+		ScoreDeltaVsPrevBest:    s.score - prevBestScore,
+		LengthDeltaVsPrevBest:   len(s.snake) - prevBestLength,
+		DurationDeltaVsPrevBest: duration - prevBestDuration,
+		NewBestScore:            s.score > prevBestScore,
+		NewBestLength:           len(s.snake) > prevBestLength,
+		NewBestDuration:         duration > prevBestDuration,
+	}
+	s.hasLastRun = true
 
 	s.runFinalized = true
 }
