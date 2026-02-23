@@ -33,3 +33,23 @@ jobs:
 
       - name: Build
         run: go build ./...
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+
+      - name: Measure Coverage
+        run: |
+          go test ./internal/game -coverprofile=coverage.out -covermode=atomic
+          COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+          echo "Coverage: ${COVERAGE}%"
+          THRESHOLD=80
+          awk -v c="$COVERAGE" -v t="$THRESHOLD" 'BEGIN { if (c < t) { exit 1 } }'

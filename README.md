@@ -45,6 +45,7 @@ Use helper tasks:
 .\scripts\dev.ps1 test
 .\scripts\dev.ps1 build
 .\scripts\dev.ps1 fmt
+.\scripts\dev.ps1 cover
 ```
 
 ## Controls
@@ -74,3 +75,10 @@ Use helper tasks:
 
 ## CI
 - GitHub Actions runs `go vet ./...`, `go test ./...`, and `go build ./...` on pushes and pull requests.
+- Coverage gate: `internal/game` must stay at or above 80% statement coverage.
+
+## Release
+- Tag a version like `v1.0.0` and push the tag.
+- Release workflow builds Windows binaries for console and graphic modes and uploads:
+  - `snake-windows-amd64.zip`
+  - `snake-windows-amd64.zip.sha256`
