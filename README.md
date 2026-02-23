@@ -54,12 +54,19 @@ Use helper tasks:
 - `D` / `Right Arrow` right
 - `Q` or `Esc` quit
 - `R` restart (game over screen)
+- `P` pause/resume
 - `F11` toggle fullscreen (graphic mode)
 
 ## Sprint A Features
 - Live stats bar in both modes: score, snake length, level, food eaten, foods to next level, elapsed time, and speed.
 - Session best stats: best score, best length, best survival time, total runs, and total play time.
 - Level progression: level increases every 5 food items, and movement speed increases each level (with a minimum speed cap).
+
+## Sprint B Features
+- Level obstacles: each new level adds obstacle blocks that must be avoided.
+- Obstacle-aware spawning: food never appears on snake or obstacle tiles.
+- Pause/resume support in both modes.
+- Game-over run summary with deltas vs previous best stats.
 
 ## CI
 - GitHub Actions runs `go vet ./...`, `go test ./...`, and `go build ./...` on pushes and pull requests.

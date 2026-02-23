@@ -32,6 +32,7 @@ var (
 	bgColor        = color.RGBA{16, 18, 23, 255}
 	boardColor     = color.RGBA{28, 34, 44, 255}
 	gridColor      = color.RGBA{37, 45, 58, 255}
+	obstacleColor  = color.RGBA{148, 158, 172, 255}
 	snakeBodyColor = color.RGBA{64, 200, 120, 255}
 	snakeHeadColor = color.RGBA{94, 235, 145, 255}
 	foodColor      = color.RGBA{245, 95, 78, 255}
@@ -41,6 +42,7 @@ type app struct {
 	state        *game.State
 	lastTickAt   time.Time
 	tickInterval time.Duration
+	paused       bool
 }
 
 type sceneLayout struct {
@@ -56,6 +58,7 @@ type sceneLayout struct {
 	hudLine2Y     int
 	hudLine3Y     int
 	hudLine4Y     int
+	hudLine5Y     int
 }
 
 func newApp() *app {
@@ -71,6 +74,9 @@ func (a *app) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
 		ebiten.SetFullscreen(!ebiten.IsFullscreen())
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyP) && !a.state.IsOver() {
+		a.paused = !a.paused
+	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyQ) || inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
@@ -81,7 +87,11 @@ func (a *app) Update() error {
 			a.state.Reset()
 			a.tickInterval = a.state.TickInterval(baseTick, minTick, levelStep)
 			a.lastTickAt = time.Now()
+			a.paused = false
 		}
+		return nil
+	}
+	if a.paused {
 		return nil
 	}
 
@@ -125,6 +135,14 @@ func (a *app) Draw(screen *ebiten.Image) {
 	foodSize := lay.cell - lay.foodInset*2
 	ebitenutil.DrawRect(screen, foodX, foodY, foodSize, foodSize, foodColor)
 
+	obstacles := a.state.Obstacles()
+	for _, p := range obstacles {
+		x := lay.boardX + float64(p.X)*lay.cell + lay.snakeInset
+		y := lay.boardY + float64(p.Y)*lay.cell + lay.snakeInset
+		size := lay.cell - lay.snakeInset*2
+		ebitenutil.DrawRect(screen, x, y, size, size, obstacleColor)
+	}
+
 	snake := a.state.Snake()
 	for i, p := range snake {
 		x := lay.boardX + float64(p.X)*lay.cell + lay.snakeInset
@@ -143,16 +161,20 @@ func (a *app) Draw(screen *ebiten.Image) {
 	}
 
 	line1 := fmt.Sprintf("Score:%d  Length:%d  Level:%d", a.state.Score(), a.state.SnakeLength(), a.state.Level())
-	line2 := fmt.Sprintf("Food:%d  NextLvl:%d  Time:%s  Speed:%.1f/s", a.state.FoodEaten(), a.state.FoodsToNextLevel(), formatDuration(a.state.Elapsed()), speed)
+	line2 := fmt.Sprintf("Food:%d  NextLvl:%d  Obst:%d  Time:%s  Speed:%.1f/s", a.state.FoodEaten(), a.state.FoodsToNextLevel(), a.state.ObstacleCount(), formatDuration(a.state.Elapsed()), speed)
 	line3 := fmt.Sprintf("BestScore:%d  BestLen:%d  BestTime:%s  Runs:%d", a.state.BestScore(), a.state.BestLength(), formatDuration(a.state.BestDuration()), a.state.RunsPlayed())
 
 	ebitenutil.DebugPrintAt(screen, line1, defaultPadding, lay.hudY)
 	ebitenutil.DebugPrintAt(screen, line2, defaultPadding, lay.hudLine2Y)
 	ebitenutil.DebugPrintAt(screen, line3, defaultPadding, lay.hudLine3Y)
 
-	msg := "WASD/Arrows move | F11 fullscreen | Q/Esc quit"
+	msg := "WASD/Arrows move | P pause | F11 fullscreen | Q/Esc quit"
+	detail := ""
 	if !a.state.Started() {
 		msg = "Press any direction key to start"
+	}
+	if a.paused {
+		msg = "Paused | P resume | Q/Esc quit"
 	}
 	if a.state.IsOver() {
 		if a.state.IsWon() {
@@ -160,8 +182,20 @@ func (a *app) Draw(screen *ebiten.Image) {
 		} else {
 			msg = "Game Over | R restart | Q/Esc quit"
 		}
+		if summary, ok := a.state.LastRunSummary(); ok {
+			detail = fmt.Sprintf("Run: Score %d (%s)  Len %d (%s)  Time %s (%s)",
+				summary.Score,
+				formatSignedInt(summary.ScoreDeltaVsPrevBest),
+				summary.Length,
+				formatSignedInt(summary.LengthDeltaVsPrevBest),
+				formatDuration(summary.Duration),
+				formatSignedDuration(summary.DurationDeltaVsPrevBest))
+		}
 	}
 	ebitenutil.DebugPrintAt(screen, msg, defaultPadding, lay.hudLine4Y)
+	if detail != "" {
+		ebitenutil.DebugPrintAt(screen, detail, defaultPadding, lay.hudLine5Y)
+	}
 }
 
 func (a *app) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -241,6 +275,7 @@ func computeLayout(screenW, screenH int) sceneLayout {
 		hudLine2Y:     defaultPadding + 20,
 		hudLine3Y:     defaultPadding + 36,
 		hudLine4Y:     defaultPadding + 54,
+		hudLine5Y:     defaultPadding + 70,
 	}
 }
 
@@ -266,4 +301,18 @@ func formatDuration(d time.Duration) string {
 	minutes := totalSeconds / 60
 	seconds := totalSeconds % 60
 	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+func formatSignedInt(v int) string {
+	if v > 0 {
+		return fmt.Sprintf("+%d", v)
+	}
+	return fmt.Sprintf("%d", v)
+}
+
+func formatSignedDuration(d time.Duration) string {
+	if d >= 0 {
+		return "+" + formatDuration(d)
+	}
+	return "-" + formatDuration(-d)
 }

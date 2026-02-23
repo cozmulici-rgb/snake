@@ -24,6 +24,7 @@ const (
 	eventDir inputEventKind = iota
 	eventQuit
 	eventRestart
+	eventPause
 )
 
 type inputEvent struct {
@@ -53,8 +54,9 @@ func main() {
 	for {
 		currentTick := state.TickInterval(baseTick, minTick, levelStep)
 		ticker := time.NewTicker(currentTick)
+		paused := false
 		drainInput(eventCh)
-		render(state, false, currentTick)
+		render(state, false, paused, currentTick)
 
 		for !state.IsOver() {
 			select {
@@ -64,18 +66,23 @@ func main() {
 					state.SetDirection(ev.dir)
 				case eventQuit:
 					ticker.Stop()
-					render(state, false, currentTick)
+					render(state, false, paused, currentTick)
 					fmt.Println("Goodbye!")
 					return
+				case eventPause:
+					paused = !paused
+					render(state, false, paused, currentTick)
 				}
 			case <-ticker.C:
-				state.Tick()
-				nextTick := state.TickInterval(baseTick, minTick, levelStep)
-				if nextTick != currentTick {
-					ticker.Reset(nextTick)
-					currentTick = nextTick
+				if !paused {
+					state.Tick()
+					nextTick := state.TickInterval(baseTick, minTick, levelStep)
+					if nextTick != currentTick {
+						ticker.Reset(nextTick)
+						currentTick = nextTick
+					}
 				}
-				render(state, false, currentTick)
+				render(state, false, paused, currentTick)
 			case err := <-errCh:
 				ticker.Stop()
 				fmt.Printf("input error: %v\n", err)
@@ -84,7 +91,7 @@ func main() {
 		}
 
 		ticker.Stop()
-		render(state, true, currentTick)
+		render(state, true, false, currentTick)
 		if !waitForEndMenu(eventCh, errCh) {
 			fmt.Println("Goodbye!")
 			return
@@ -135,6 +142,9 @@ func readInput(eventCh chan<- inputEvent, errCh chan<- error) {
 		case 'r', 'R':
 			eventCh <- inputEvent{kind: eventRestart}
 			continue
+		case 'p', 'P':
+			eventCh <- inputEvent{kind: eventPause}
+			continue
 		case 'q', 'Q':
 			eventCh <- inputEvent{kind: eventQuit}
 			continue
@@ -146,11 +156,12 @@ func readInput(eventCh chan<- inputEvent, errCh chan<- error) {
 	}
 }
 
-func render(state *game.State, showEndMenu bool, tickInterval time.Duration) {
+func render(state *game.State, showEndMenu bool, paused bool, tickInterval time.Duration) {
 	var b strings.Builder
 	width := state.Width()
 	height := state.Height()
 	snake := state.Snake()
+	obstacles := state.Obstacles()
 	food := state.Food()
 	started := state.Started()
 	speed := 0.0
@@ -161,8 +172,8 @@ func render(state *game.State, showEndMenu bool, tickInterval time.Duration) {
 	b.Grow((width + 4) * (height + 14))
 	b.WriteString("\x1b[H")
 	b.WriteString("Snake (Console)\n")
-	b.WriteString(fmt.Sprintf("Score:%d  Length:%d  Level:%d  Food:%d  NextLvl:%d  Speed:%.1f/s  Time:%s\n",
-		state.Score(), state.SnakeLength(), state.Level(), state.FoodEaten(), state.FoodsToNextLevel(), speed, formatDuration(state.Elapsed())))
+	b.WriteString(fmt.Sprintf("Score:%d  Length:%d  Level:%d  Food:%d  NextLvl:%d  Obst:%d  Speed:%.1f/s  Time:%s\n",
+		state.Score(), state.SnakeLength(), state.Level(), state.FoodEaten(), state.FoodsToNextLevel(), state.ObstacleCount(), speed, formatDuration(state.Elapsed())))
 	b.WriteString(fmt.Sprintf("BestScore:%d  BestLength:%d  BestTime:%s  Runs:%d  TotalTime:%s\n\n",
 		state.BestScore(), state.BestLength(), formatDuration(state.BestDuration()), state.RunsPlayed(), formatDuration(state.TotalPlayTime())))
 
@@ -176,6 +187,8 @@ func render(state *game.State, showEndMenu bool, tickInterval time.Duration) {
 				switch {
 				case p == food:
 					b.WriteByte('*')
+				case contains(obstacles, p):
+					b.WriteByte('x')
 				case len(snake) > 0 && p == snake[0]:
 					b.WriteByte('@')
 				case contains(snake[1:], p):
@@ -187,15 +200,27 @@ func render(state *game.State, showEndMenu bool, tickInterval time.Duration) {
 		}
 		b.WriteByte('\n')
 	}
-	b.WriteString("\nControls: WASD or Arrow Keys to move, Q/Esc to quit.\n")
+	b.WriteString("\nControls: WASD or Arrow Keys to move, P pause, Q/Esc quit.\n")
 	if !started {
 		b.WriteString("Press any direction key to start.\n")
+	}
+	if paused {
+		b.WriteString("Paused. Press P to resume.\n")
 	}
 	if showEndMenu {
 		if state.IsWon() {
 			b.WriteString("You win! Press R to restart, Q/Esc to quit.\n")
 		} else {
 			b.WriteString("Game Over! Press R to restart, Q/Esc to quit.\n")
+		}
+		if summary, ok := state.LastRunSummary(); ok {
+			b.WriteString(fmt.Sprintf("Run: Score %d (%s) | Length %d (%s) | Time %s (%s)\n",
+				summary.Score,
+				formatSignedInt(summary.ScoreDeltaVsPrevBest),
+				summary.Length,
+				formatSignedInt(summary.LengthDeltaVsPrevBest),
+				formatDuration(summary.Duration),
+				formatSignedDuration(summary.DurationDeltaVsPrevBest)))
 		}
 	}
 	fmt.Print(b.String())
@@ -245,6 +270,20 @@ func formatDuration(d time.Duration) string {
 	minutes := totalSeconds / 60
 	seconds := totalSeconds % 60
 	return fmt.Sprintf("%02d:%02d", minutes, seconds)
+}
+
+func formatSignedInt(v int) string {
+	if v > 0 {
+		return fmt.Sprintf("+%d", v)
+	}
+	return fmt.Sprintf("%d", v)
+}
+
+func formatSignedDuration(d time.Duration) string {
+	if d >= 0 {
+		return "+" + formatDuration(d)
+	}
+	return "-" + formatDuration(-d)
 }
 
 func initScreen() {
