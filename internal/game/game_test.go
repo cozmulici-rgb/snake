@@ -403,7 +403,7 @@ func TestProfileExportImportRoundTrip(t *testing.T) {
 	if g2.BestLength() != g.BestLength() {
 		t.Fatalf("best length mismatch after profile import: got=%d want=%d", g2.BestLength(), g.BestLength())
 	}
-	if g2.BestDuration() != g.BestDuration() {
+	if g2.BestDuration().Milliseconds() != g.BestDuration().Milliseconds() {
 		t.Fatalf("best duration mismatch after profile import: got=%v want=%v", g2.BestDuration(), g.BestDuration())
 	}
 	if g2.RunsPlayed() != g.RunsPlayed() {
@@ -412,7 +412,7 @@ func TestProfileExportImportRoundTrip(t *testing.T) {
 	if g2.TotalFoodEaten() != g.TotalFoodEaten() {
 		t.Fatalf("total food mismatch after profile import: got=%d want=%d", g2.TotalFoodEaten(), g.TotalFoodEaten())
 	}
-	if g2.TotalPlayTime() != g.TotalPlayTime() {
+	if g2.TotalPlayTime().Milliseconds() != g.TotalPlayTime().Milliseconds() {
 		t.Fatalf("total play time mismatch after profile import: got=%v want=%v", g2.TotalPlayTime(), g.TotalPlayTime())
 	}
 }
