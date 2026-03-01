@@ -117,6 +117,14 @@ After game over, run summary includes deltas vs previous best values.
 - Stats persist automatically between sessions.
 - Profile path on Windows: `%APPDATA%\snake\profile.json`
 
+## Developer Architecture
+- Layered architecture follows `cmd -> ui -> app -> domain`.
+- `internal/domain/gameplay` contains pure gameplay rules and invariants.
+- `internal/app/session` orchestrates use-cases and exposes immutable snapshots.
+- `internal/infra/profile` and `internal/infra/system` provide storage/clock/rng adapters.
+- `internal/ui/console` and `internal/ui/graphic` adapt platform input/rendering to the app layer.
+- Design and migration docs are in `docs/architecture` and ADRs in `docs/adr`.
+
 ## Troubleshooting
 - `go` not found: install Go, reopen the terminal, or run via `.\scripts\dev.ps1` (it also checks `C:\Program Files\Go\bin\go.exe`).
 - Console input errors: run in PowerShell/Windows Terminal with focus on the game terminal; avoid terminals that block raw keyboard input.

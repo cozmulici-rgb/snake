@@ -11,15 +11,12 @@ internal/
   app/
     session/
       service.go
-      commands.go
-      queries.go
+      ports.go
+      types.go
   domain/
     gameplay/
       aggregate.go
-      entity_snake.go
-      entity_board.go
       value_objects.go
-      rules.go
   infra/
     profile/
       file_repository.go
