@@ -1,5 +1,11 @@
 # Migration Backlog
 
+## Transition Status
+
+- Completed on March 1, 2026.
+- This file is retained as historical execution evidence for the redesign.
+- Ongoing architecture changes should be tracked in ADRs and normal issue planning.
+
 ## Status Legend
 
 - `[ ]` not started

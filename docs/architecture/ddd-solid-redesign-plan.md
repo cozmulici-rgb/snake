@@ -1,5 +1,10 @@
 # DDD + SOLID Redesign Plan
 
+## Status
+
+Completed on March 1, 2026. This document is retained as historical transition planning context.
+For current-state architecture, see `docs/architecture/target-architecture.md`.
+
 ## 1. Objective
 
 Redesign the application so game rules are modeled as a domain first, with clear boundaries and minimal coupling between:
@@ -41,6 +46,8 @@ Redesign the application so game rules are modeled as a domain first, with clear
   - Console and Ebiten adapters; map input/render to app services.
 
 ## 5. Migration Strategy
+
+All phases below were completed during the redesign effort.
 
 ## Phase A: Foundation
 
