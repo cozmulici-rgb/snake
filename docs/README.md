@@ -2,19 +2,37 @@
 
 This folder contains internal plans and technical documentation for the Snake project.
 
+## Current Status
+
+- DDD/SOLID transition completed on March 1, 2026.
+- `docs/architecture/target-architecture.md` is the canonical architecture reference.
+- Transition planning docs are retained as implementation history.
+
+## Application Design Diagram
+
+```mermaid
+flowchart LR
+    CMD[cmd/*] --> UI[internal/ui/*]
+    UI --> APP[internal/app/session]
+    APP --> DOMAIN[internal/domain/gameplay]
+    APP --> PORTS[app ports]
+    INFRA_PROFILE[internal/infra/profile] --> PORTS
+    INFRA_SYSTEM[internal/infra/system] --> PORTS
+```
+
 ## Contents
 
 - `docs/architecture/ddd-solid-redesign-plan.md`
-  - End-to-end redesign strategy using DDD and SOLID.
+  - Historical transition strategy used for the redesign.
 - `docs/architecture/target-architecture.md`
-  - Target package layout, boundaries, and dependency rules.
+  - Current package layout, boundaries, and dependency rules.
 - `docs/architecture/migration-backlog.md`
-  - Execution backlog with milestones and acceptance criteria.
+  - Historical migration backlog and completion status.
 - `docs/adr/0001-ddd-boundaries.md`
   - Architectural decision record for bounded contexts and layers.
 
 ## Usage
 
-- Update these docs before major architecture changes.
-- Keep code changes linked to backlog items and ADR decisions.
-- Keep status fields current so implementation progress is visible.
+- Update `target-architecture.md` and ADRs before major boundary changes.
+- Keep transition docs as immutable history unless correcting factual errors.
+- Keep code changes linked to ADR decisions.

@@ -123,7 +123,12 @@ After game over, run summary includes deltas vs previous best values.
 - `internal/app/session` orchestrates use-cases and exposes immutable snapshots.
 - `internal/infra/profile` and `internal/infra/system` provide storage/clock/rng adapters.
 - `internal/ui/console` and `internal/ui/graphic` adapt platform input/rendering to the app layer.
-- Design and migration docs are in `docs/architecture` and ADRs in `docs/adr`.
+- Architecture transition is complete; current boundaries are documented in `docs/architecture/target-architecture.md`.
+
+## Documentation
+- User/developer setup and run guide: this `README.md`.
+- Internal architecture docs: `docs/README.md`.
+- ADRs: `docs/adr/`.
 
 ## Troubleshooting
 - `go` not found: install Go, reopen the terminal, or run via `.\scripts\dev.ps1` (it also checks `C:\Program Files\Go\bin\go.exe`).
