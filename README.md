@@ -1,96 +1,132 @@
 # Snake (Go, Windows)
 
-Snake game with both console and graphical modes.
+Snake is a Windows game written in Go with two play modes:
+- Graphic mode (default)
+- Console mode
 
 ## Requirements
 - Windows
-- Go 1.24+ installed and available on PATH
+- Go 1.24+
 
-## Run
+## Quick Start
 
-### Console mode
-From this folder:
-
-```powershell
-go test ./...
-go run ./cmd/console
-```
-
-Or use the launcher:
-
-```powershell
-.\run.bat
-```
-
-### Graphic mode
-Default mode (`go run .`) and desktop window mode:
+Run graphic mode (default):
 
 ```powershell
 go run .
 ```
 
-Start directly in fullscreen:
+Run graphic mode in fullscreen:
 
 ```powershell
 go run . --fullscreen
 ```
 
-Alternative explicit graphic entrypoint:
+Run console mode:
 
 ```powershell
-go run ./cmd/graphic
+go run ./cmd/console
 ```
 
-### Dev script (PowerShell)
-Use helper tasks:
+Use the Windows launcher:
 
 ```powershell
-.\scripts\dev.ps1 console
+.\run.bat
+```
+
+Use the helper script:
+
+```powershell
 .\scripts\dev.ps1 graphic
 .\scripts\dev.ps1 graphic-fullscreen
+.\scripts\dev.ps1 console
+```
+
+## Compile Binaries
+
+Build Windows executables:
+
+```powershell
+go build -o snake-graphic.exe .
+go build -o snake-console.exe ./cmd/console
+```
+
+Build all packages (sanity compile):
+
+```powershell
+go build ./...
+```
+
+## Game Rules
+- The snake does not move until you press the first direction key.
+- Eat food to increase score and snake length.
+- Every 5 foods, the level increases.
+- Each level increases speed.
+- Obstacles are added as levels increase.
+- You lose if you hit a wall, your body, or an obstacle.
+- You win if the board fills and no food can be placed.
+
+## Controls
+
+In game:
+- `W` or `Up` move up
+- `A` or `Left` move left
+- `S` or `Down` move down
+- `D` or `Right` move right
+- `P` pause/resume
+- `Q` or `Esc` quit
+- `R` restart after game over
+
+Graphic mode only:
+- `F11` toggle fullscreen
+- `M` return to menu on game-over screen
+
+Graphic menu:
+- `Up`/`Down` or `W`/`S` change preset
+- `1`, `2`, `3` quick-select preset
+- `Enter` or `Space` start game
+
+## Difficulty Presets (Graphic Mode)
+- `Balanced` default progression.
+- `Relaxed` slower speed and softer obstacle growth.
+- `Hardcore` faster speed and denser obstacles.
+
+## HUD and Statistics
+
+Live HUD (both modes) shows:
+- Current score
+- Snake length
+- Level
+- Food eaten
+- Foods needed for next level
+- Obstacle count
+- Elapsed time
+- Current speed (cells/second)
+
+Session and profile stats:
+- Best score
+- Best length
+- Best survival time
+- Runs played
+- Total food eaten
+- Total play time
+
+After game over, run summary includes deltas vs previous best values.
+
+## Saved Profile
+- Stats persist automatically between sessions.
+- Profile path on Windows: `%APPDATA%\snake\profile.json`
+
+## Troubleshooting
+- `go` not found: install Go, reopen the terminal, or run via `.\scripts\dev.ps1` (it also checks `C:\Program Files\Go\bin\go.exe`).
+- Console input errors: run in PowerShell/Windows Terminal with focus on the game terminal; avoid terminals that block raw keyboard input.
+- Reset profile data: delete `%APPDATA%\snake\profile.json` and start the game again.
+
+## Developer Commands
+
+```powershell
 .\scripts\dev.ps1 test
 .\scripts\dev.ps1 build
 .\scripts\dev.ps1 fmt
 .\scripts\dev.ps1 cover
 ```
-
-## Controls
-- `W` / `Up Arrow` up
-- `A` / `Left Arrow` left
-- `S` / `Down Arrow` down
-- `D` / `Right Arrow` right
-- `Q` or `Esc` quit
-- `R` restart (game over screen)
-- `M` back to menu (graphic mode game-over screen)
-- `P` pause/resume
-- `F11` toggle fullscreen (graphic mode)
-
-### Graphic Menu Controls
-- `Up` / `Down` (or `W` / `S`) select mode preset
-- `1`, `2`, `3` quick preset select
-- `Enter` or `Space` start game
-
-## Sprint A Features
-- Live stats bar in both modes: score, snake length, level, food eaten, foods to next level, elapsed time, and speed.
-- Session best stats: best score, best length, best survival time, total runs, and total play time.
-- Level progression: level increases every 5 food items, and movement speed increases each level (with a minimum speed cap).
-
-## Sprint B Features
-- Level obstacles: each new level adds obstacle blocks that must be avoided.
-- Obstacle-aware spawning: food never appears on snake or obstacle tiles.
-- Pause/resume support in both modes.
-- Game-over run summary with deltas vs previous best stats.
-
-## Sprint C Features
-- Persistent profile stats across app restarts (best score/length/time, runs played, total food, total play time).
-- Profile is stored at `%APPDATA%\\snake\\profile.json` on Windows.
-
-## CI
-- GitHub Actions runs `go vet ./...`, `go test ./...`, and `go build ./...` on pushes and pull requests.
-- Coverage gate: `internal/game` must stay at or above 80% statement coverage.
-
-## Release
-- Tag a version like `v1.0.0` and push the tag.
-- Release workflow builds Windows binaries for console and graphic modes and uploads:
-  - `snake-windows-amd64.zip`
-  - `snake-windows-amd64.zip.sha256`
