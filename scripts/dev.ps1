@@ -1,6 +1,6 @@
 param(
     [ValidateSet("console", "graphic", "graphic-fullscreen", "test", "build", "fmt", "cover")]
-    [string]$Task = "console"
+    [string]$Task = "graphic"
 )
 
 $goCmd = Get-Command go -ErrorAction SilentlyContinue
@@ -15,10 +15,10 @@ if ($goCmd) {
 
 switch ($Task) {
     "console" {
-        & $goExe run .
+        & $goExe run ./cmd/console
     }
     "graphic" {
-        & $goExe run ./cmd/graphic
+        & $goExe run .
     }
     "graphic-fullscreen" {
         & $goExe run ./cmd/graphic --fullscreen
