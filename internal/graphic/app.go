@@ -3,15 +3,17 @@
 package graphic
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"image/color"
 	"log"
-	"os"
 	"time"
 
-	"snake/internal/game"
-	"snake/internal/profile"
+	"snake/internal/app/session"
+	infprofile "snake/internal/infra/profile"
+	"snake/internal/infra/system"
+	graphicui "snake/internal/ui/graphic"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -90,13 +92,10 @@ type app struct {
 	scene          sceneState
 	selectedPreset int
 	currentPreset  preset
-	state          *game.State
+	service        session.SessionService
+	profileData    session.Profile
 	lastTickAt     time.Time
 	tickInterval   time.Duration
-	paused         bool
-	profilePath    string
-	profileData    game.Profile
-	savedRuns      int
 }
 
 type sceneLayout struct {
@@ -116,38 +115,39 @@ type sceneLayout struct {
 }
 
 func newApp() *app {
-	path := profile.DefaultPath()
-	var p game.Profile
-	if loaded, err := profile.Load(path); err == nil {
-		p = loaded
-	} else if !os.IsNotExist(err) {
+	svc := session.NewService(system.RealClock{}, system.NewMathRandom(0), infprofile.NewFileRepository(infprofile.DefaultPath()))
+	if err := svc.LoadProfile(context.Background()); err != nil {
 		log.Printf("warning: could not load profile: %v", err)
 	}
 
 	return &app{
 		scene:          sceneMenu,
 		selectedPreset: 0,
-		profilePath:    path,
-		profileData:    p,
+		service:        svc,
+		profileData:    svc.Profile(),
 	}
 }
 
 func (a *app) startGameFromSelectedPreset() {
 	cfgPreset := presets[a.selectedPreset]
-	state := game.New(game.Config{
+	err := a.service.Start(context.Background(), session.PresetConfig{
+		Name:          cfgPreset.name,
 		Width:         boardWidth,
 		Height:        boardHeight,
 		FoodsPerLevel: cfgPreset.foodsPerLevel,
 		ObstaclesStep: cfgPreset.obstaclesStep,
-	}, nil)
-	state.ApplyProfile(a.profileData)
+		BaseTick:      cfgPreset.baseTick,
+		MinTick:       cfgPreset.minTick,
+		LevelStep:     cfgPreset.levelStep,
+	})
+	if err != nil {
+		log.Printf("warning: could not start session: %v", err)
+		return
+	}
 
 	a.currentPreset = cfgPreset
-	a.state = state
-	a.tickInterval = state.TickInterval(cfgPreset.baseTick, cfgPreset.minTick, cfgPreset.levelStep)
+	a.tickInterval = a.service.Snapshot().TickInterval
 	a.lastTickAt = time.Now()
-	a.paused = false
-	a.savedRuns = state.RunsPlayed()
 	a.scene = sceneGame
 }
 
@@ -181,49 +181,56 @@ func (a *app) Update() error {
 		}
 		return nil
 	case sceneGame:
-		if a.state == nil {
+		snap := a.service.Snapshot()
+		if snap.Width == 0 || snap.Height == 0 {
 			a.scene = sceneMenu
 			return nil
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyP) && !a.state.IsOver() {
-			a.paused = !a.paused
+		if inpututil.IsKeyJustPressed(ebiten.KeyP) && !snap.IsOver {
+			a.service.TogglePause()
+			snap = a.service.Snapshot()
 		}
-
 		if inpututil.IsKeyJustPressed(ebiten.KeyQ) || inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-			a.state.FinalizeNow()
-			a.persistProfile()
+			_ = a.service.Quit()
+			a.profileData = a.service.Profile()
 			return ebiten.Termination
 		}
 
-		if a.state.IsOver() {
-			a.persistProfile()
+		if snap.IsOver {
+			a.profileData = a.service.Profile()
 			if inpututil.IsKeyJustPressed(ebiten.KeyR) {
-				a.state.Reset()
-				a.persistProfile()
-				a.tickInterval = a.state.TickInterval(a.currentPreset.baseTick, a.currentPreset.minTick, a.currentPreset.levelStep)
+				if err := a.service.Restart(); err != nil {
+					log.Printf("warning: could not restart session: %v", err)
+					return nil
+				}
+				a.tickInterval = a.service.Snapshot().TickInterval
 				a.lastTickAt = time.Now()
-				a.paused = false
 			}
 			if inpututil.IsKeyJustPressed(ebiten.KeyM) {
 				a.scene = sceneMenu
 			}
 			return nil
 		}
-		if a.paused {
-			return nil
-		}
 
 		if dir, ok := readDirection(); ok {
-			a.state.SetDirection(dir)
+			a.service.ApplyDirection(dir)
+			snap = a.service.Snapshot()
+		}
+		if snap.Paused {
+			return nil
+		}
+		if a.tickInterval <= 0 {
+			a.tickInterval = snap.TickInterval
 		}
 
 		now := time.Now()
 		for now.Sub(a.lastTickAt) >= a.tickInterval {
-			a.state.Tick()
-			a.persistProfile()
+			a.service.Tick()
 			a.lastTickAt = a.lastTickAt.Add(a.tickInterval)
-			a.tickInterval = a.state.TickInterval(a.currentPreset.baseTick, a.currentPreset.minTick, a.currentPreset.levelStep)
-			if a.state.IsOver() {
+			snap = a.service.Snapshot()
+			a.tickInterval = snap.TickInterval
+			if snap.IsOver {
+				a.profileData = a.service.Profile()
 				break
 			}
 		}
@@ -241,7 +248,8 @@ func (a *app) Draw(screen *ebiten.Image) {
 		return
 	}
 
-	if a.state == nil {
+	snap := a.service.Snapshot()
+	if snap.Width == 0 || snap.Height == 0 {
 		a.drawMenu(screen)
 		return
 	}
@@ -260,22 +268,19 @@ func (a *app) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, lineX, lay.boardY, lay.gridLineWidth, lay.boardPixelH, gridColor)
 	}
 
-	food := a.state.Food()
-	foodX := lay.boardX + float64(food.X)*lay.cell + lay.foodInset
-	foodY := lay.boardY + float64(food.Y)*lay.cell + lay.foodInset
+	foodX := lay.boardX + float64(snap.Food.X)*lay.cell + lay.foodInset
+	foodY := lay.boardY + float64(snap.Food.Y)*lay.cell + lay.foodInset
 	foodSize := lay.cell - lay.foodInset*2
 	ebitenutil.DrawRect(screen, foodX, foodY, foodSize, foodSize, foodColor)
 
-	obstacles := a.state.Obstacles()
-	for _, p := range obstacles {
+	for _, p := range snap.Obstacles {
 		x := lay.boardX + float64(p.X)*lay.cell + lay.snakeInset
 		y := lay.boardY + float64(p.Y)*lay.cell + lay.snakeInset
 		size := lay.cell - lay.snakeInset*2
 		ebitenutil.DrawRect(screen, x, y, size, size, obstacleColor)
 	}
 
-	snake := a.state.Snake()
-	for i, p := range snake {
+	for i, p := range snap.Snake {
 		x := lay.boardX + float64(p.X)*lay.cell + lay.snakeInset
 		y := lay.boardY + float64(p.Y)*lay.cell + lay.snakeInset
 		size := lay.cell - lay.snakeInset*2
@@ -286,46 +291,13 @@ func (a *app) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, x, y, size, size, c)
 	}
 
-	speed := 0.0
-	if a.tickInterval > 0 {
-		speed = 1 / a.tickInterval.Seconds()
-	}
-
-	line1 := fmt.Sprintf("Mode:%s  Score:%d  Length:%d  Level:%d", a.currentPreset.name, a.state.Score(), a.state.SnakeLength(), a.state.Level())
-	line2 := fmt.Sprintf("Food:%d  NextLvl:%d  Obst:%d  Time:%s  Speed:%.1f/s", a.state.FoodEaten(), a.state.FoodsToNextLevel(), a.state.ObstacleCount(), formatDuration(a.state.Elapsed()), speed)
-	line3 := fmt.Sprintf("BestScore:%d  BestLen:%d  BestTime:%s  Runs:%d", a.state.BestScore(), a.state.BestLength(), formatDuration(a.state.BestDuration()), a.state.RunsPlayed())
-
-	ebitenutil.DebugPrintAt(screen, line1, defaultPadding, lay.hudY)
-	ebitenutil.DebugPrintAt(screen, line2, defaultPadding, lay.hudLine2Y)
-	ebitenutil.DebugPrintAt(screen, line3, defaultPadding, lay.hudLine3Y)
-
-	msg := "WASD/Arrows move | P pause | F11 fullscreen | Q/Esc quit"
-	detail := ""
-	if !a.state.Started() {
-		msg = "Press any direction key to start"
-	}
-	if a.paused {
-		msg = "Paused | P resume | Q/Esc quit"
-	}
-	if a.state.IsOver() {
-		if a.state.IsWon() {
-			msg = "You win! R restart | M menu | Q/Esc quit"
-		} else {
-			msg = "Game Over | R restart | M menu | Q/Esc quit"
-		}
-		if summary, ok := a.state.LastRunSummary(); ok {
-			detail = fmt.Sprintf("Run: Score %d (%s)  Len %d (%s)  Time %s (%s)",
-				summary.Score,
-				formatSignedInt(summary.ScoreDeltaVsPrevBest),
-				summary.Length,
-				formatSignedInt(summary.LengthDeltaVsPrevBest),
-				formatDuration(summary.Duration),
-				formatSignedDuration(summary.DurationDeltaVsPrevBest))
-		}
-	}
-	ebitenutil.DebugPrintAt(screen, msg, defaultPadding, lay.hudLine4Y)
-	if detail != "" {
-		ebitenutil.DebugPrintAt(screen, detail, defaultPadding, lay.hudLine5Y)
+	hud := graphicui.BuildHUD(a.currentPreset.name, snap)
+	ebitenutil.DebugPrintAt(screen, hud.Line1, defaultPadding, lay.hudY)
+	ebitenutil.DebugPrintAt(screen, hud.Line2, defaultPadding, lay.hudLine2Y)
+	ebitenutil.DebugPrintAt(screen, hud.Line3, defaultPadding, lay.hudLine3Y)
+	ebitenutil.DebugPrintAt(screen, hud.Msg, defaultPadding, lay.hudLine4Y)
+	if hud.Detail != "" {
+		ebitenutil.DebugPrintAt(screen, hud.Detail, defaultPadding, lay.hudLine5Y)
 	}
 }
 
@@ -346,11 +318,11 @@ func (a *app) drawMenu(screen *ebiten.Image) {
 	bestLine := fmt.Sprintf("BestScore:%d  BestLen:%d  BestTime:%s  Runs:%d",
 		a.profileData.BestScore,
 		a.profileData.BestLength,
-		formatDuration(time.Duration(a.profileData.BestDurationMillis)*time.Millisecond),
+		graphicui.FormatDuration(time.Duration(a.profileData.BestDurationMillis)*time.Millisecond),
 		a.profileData.RunsPlayed)
 	ebitenutil.DebugPrintAt(screen, bestLine, defaultPadding, baseY+len(presets)*20+20)
 
-	totalLine := fmt.Sprintf("TotalFood:%d  TotalPlay:%s", a.profileData.TotalFoodEaten, formatDuration(time.Duration(a.profileData.TotalPlayTimeMillis)*time.Millisecond))
+	totalLine := fmt.Sprintf("TotalFood:%d  TotalPlay:%s", a.profileData.TotalFoodEaten, graphicui.FormatDuration(time.Duration(a.profileData.TotalPlayTimeMillis)*time.Millisecond))
 	ebitenutil.DebugPrintAt(screen, totalLine, defaultPadding, baseY+len(presets)*20+40)
 }
 
@@ -361,18 +333,18 @@ func (a *app) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return outsideWidth, outsideHeight
 }
 
-func readDirection() (game.Direction, bool) {
+func readDirection() (session.DirectionInput, bool) {
 	switch {
 	case inpututil.IsKeyJustPressed(ebiten.KeyW), inpututil.IsKeyJustPressed(ebiten.KeyArrowUp):
-		return game.DirUp, true
+		return session.DirectionUp, true
 	case inpututil.IsKeyJustPressed(ebiten.KeyS), inpututil.IsKeyJustPressed(ebiten.KeyArrowDown):
-		return game.DirDown, true
+		return session.DirectionDown, true
 	case inpututil.IsKeyJustPressed(ebiten.KeyA), inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft):
-		return game.DirLeft, true
+		return session.DirectionLeft, true
 	case inpututil.IsKeyJustPressed(ebiten.KeyD), inpututil.IsKeyJustPressed(ebiten.KeyArrowRight):
-		return game.DirRight, true
+		return session.DirectionRight, true
 	default:
-		return game.DirNone, false
+		return session.DirectionNone, false
 	}
 }
 
@@ -447,40 +419,4 @@ func maxFloat(a, b float64) float64 {
 		return a
 	}
 	return b
-}
-
-func formatDuration(d time.Duration) string {
-	if d < 0 {
-		d = 0
-	}
-	totalSeconds := int(d.Seconds())
-	minutes := totalSeconds / 60
-	seconds := totalSeconds % 60
-	return fmt.Sprintf("%02d:%02d", minutes, seconds)
-}
-
-func formatSignedInt(v int) string {
-	if v > 0 {
-		return fmt.Sprintf("+%d", v)
-	}
-	return fmt.Sprintf("%d", v)
-}
-
-func formatSignedDuration(d time.Duration) string {
-	if d >= 0 {
-		return "+" + formatDuration(d)
-	}
-	return "-" + formatDuration(-d)
-}
-
-func (a *app) persistProfile() {
-	if a.state == nil || a.state.RunsPlayed() == a.savedRuns {
-		return
-	}
-	if err := profile.Save(a.profilePath, a.state.Profile()); err != nil {
-		log.Printf("warning: could not save profile: %v", err)
-		return
-	}
-	a.savedRuns = a.state.RunsPlayed()
-	a.profileData = a.state.Profile()
 }
