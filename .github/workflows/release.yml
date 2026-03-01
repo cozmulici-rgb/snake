@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: true
+
+      - name: Build Windows Binaries
+        run: |
+          mkdir -p dist
+          GOOS=windows GOARCH=amd64 go build -o dist/snake-console.exe ./cmd/console
+          GOOS=windows GOARCH=amd64 go build -o dist/snake-graphic.exe .
+
+      - name: Package Artifacts
+        run: |
+          cd dist
+          zip -r snake-windows-amd64.zip snake-console.exe snake-graphic.exe
+          sha256sum snake-windows-amd64.zip > snake-windows-amd64.zip.sha256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/snake-windows-amd64.zip
+            dist/snake-windows-amd64.zip.sha256
