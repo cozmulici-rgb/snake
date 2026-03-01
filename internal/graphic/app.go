@@ -5,7 +5,6 @@ package graphic
 import (
 	"context"
 	"flag"
-	"fmt"
 	"image/color"
 	"log"
 	"time"
@@ -29,6 +28,14 @@ const (
 	minCellSize         = 12
 	defaultWindowWidth  = boardWidth*defaultCellSize + defaultPadding*2
 	defaultWindowHeight = boardHeight*defaultCellSize + defaultPadding*2 + defaultHUDHeight
+	debugCharWidth      = 7
+	menuCardHeight      = 28
+	menuCardSpacing     = 10
+	menuAccentWidth     = 5
+	overlayPanelWidth   = 0.68
+	overlayPanelHeight  = 0.38
+	overlayMinPanelW    = 280
+	overlayMinPanelH    = 120
 )
 
 var (
@@ -39,6 +46,11 @@ var (
 	snakeBodyColor = color.RGBA{64, 200, 120, 255}
 	snakeHeadColor = color.RGBA{94, 235, 145, 255}
 	foodColor      = color.RGBA{245, 95, 78, 255}
+	menuCardColor  = color.RGBA{29, 35, 47, 255}
+	menuSelected   = color.RGBA{42, 52, 70, 255}
+	menuAccent     = color.RGBA{245, 95, 78, 255}
+	overlayScrim   = color.RGBA{12, 14, 18, 180}
+	overlayPanel   = color.RGBA{26, 31, 42, 235}
 )
 
 type sceneState int
@@ -299,31 +311,78 @@ func (a *app) Draw(screen *ebiten.Image) {
 	if hud.Detail != "" {
 		ebitenutil.DebugPrintAt(screen, hud.Detail, defaultPadding, lay.hudLine5Y)
 	}
+	if overlay, ok := graphicui.BuildStartOverlay(a.currentPreset.name, snap); ok {
+		a.drawStartOverlay(screen, lay, overlay)
+	}
 }
 
 func (a *app) drawMenu(screen *ebiten.Image) {
-	ebitenutil.DebugPrintAt(screen, "SNAKE - MODE SELECT", defaultPadding, defaultPadding)
-	ebitenutil.DebugPrintAt(screen, "Use Up/Down or 1-3, Enter to start, Q/Esc quit", defaultPadding, defaultPadding+20)
+	sw, _ := screen.Bounds().Dx(), screen.Bounds().Dy()
+	menu := graphicui.BuildMainMenu(a.selectedPreset, toMenuPresets(presets), a.profileData)
 
-	baseY := defaultPadding + 48
-	for i, p := range presets {
-		prefix := "  "
+	titleX := centeredTextX(menu.Title, sw)
+	subtitleX := centeredTextX(menu.Subtitle, sw)
+	helpX := centeredTextX(menu.HelpLine, sw)
+	ebitenutil.DebugPrintAt(screen, menu.Title, titleX, defaultPadding+4)
+	ebitenutil.DebugPrintAt(screen, menu.Subtitle, subtitleX, defaultPadding+26)
+	ebitenutil.DebugPrintAt(screen, menu.HelpLine, helpX, defaultPadding+44)
+
+	cardsW := float64(sw - defaultPadding*2)
+	if cardsW > 740 {
+		cardsW = 740
+	}
+	cardsX := (float64(sw) - cardsW) / 2
+	baseY := float64(defaultPadding + 72)
+	for i, line := range menu.PresetLines {
+		y := baseY + float64(i*(menuCardHeight+menuCardSpacing))
+		cardColor := menuCardColor
 		if i == a.selectedPreset {
-			prefix = "> "
+			cardColor = menuSelected
 		}
-		line := fmt.Sprintf("%s%d. %s - %s", prefix, i+1, p.name, p.description)
-		ebitenutil.DebugPrintAt(screen, line, defaultPadding, baseY+i*18)
+		ebitenutil.DrawRect(screen, cardsX, y, cardsW, menuCardHeight, cardColor)
+		if i == a.selectedPreset {
+			ebitenutil.DrawRect(screen, cardsX, y, menuAccentWidth, menuCardHeight, menuAccent)
+		}
+		ebitenutil.DebugPrintAt(screen, line, int(cardsX)+12, int(y)+8)
 	}
 
-	bestLine := fmt.Sprintf("BestScore:%d  BestLen:%d  BestTime:%s  Runs:%d",
-		a.profileData.BestScore,
-		a.profileData.BestLength,
-		graphicui.FormatDuration(time.Duration(a.profileData.BestDurationMillis)*time.Millisecond),
-		a.profileData.RunsPlayed)
-	ebitenutil.DebugPrintAt(screen, bestLine, defaultPadding, baseY+len(presets)*20+20)
+	statsY := int(baseY) + len(menu.PresetLines)*(menuCardHeight+menuCardSpacing) + 20
+	ebitenutil.DebugPrintAt(screen, menu.StatsLine1, centeredTextX(menu.StatsLine1, sw), statsY)
+	ebitenutil.DebugPrintAt(screen, menu.StatsLine2, centeredTextX(menu.StatsLine2, sw), statsY+18)
+}
 
-	totalLine := fmt.Sprintf("TotalFood:%d  TotalPlay:%s", a.profileData.TotalFoodEaten, graphicui.FormatDuration(time.Duration(a.profileData.TotalPlayTimeMillis)*time.Millisecond))
-	ebitenutil.DebugPrintAt(screen, totalLine, defaultPadding, baseY+len(presets)*20+40)
+func (a *app) drawStartOverlay(screen *ebiten.Image, lay sceneLayout, overlay graphicui.StartOverlay) {
+	ebitenutil.DrawRect(screen, lay.boardX, lay.boardY, lay.boardPixelW, lay.boardPixelH, overlayScrim)
+
+	panelW := lay.boardPixelW * overlayPanelWidth
+	panelH := lay.boardPixelH * overlayPanelHeight
+	if panelW < overlayMinPanelW {
+		panelW = overlayMinPanelW
+	}
+	if panelH < overlayMinPanelH {
+		panelH = overlayMinPanelH
+	}
+	maxW := lay.boardPixelW - 24
+	maxH := lay.boardPixelH - 24
+	if panelW > maxW {
+		panelW = maxW
+	}
+	if panelH > maxH {
+		panelH = maxH
+	}
+
+	panelX := lay.boardX + (lay.boardPixelW-panelW)/2
+	panelY := lay.boardY + (lay.boardPixelH-panelH)/2
+	ebitenutil.DrawRect(screen, panelX, panelY, panelW, panelH, overlayPanel)
+	ebitenutil.DrawRect(screen, panelX, panelY, panelW, 3, menuAccent)
+
+	centerX := int(panelX + panelW/2)
+	titleY := int(panelY) + 20
+	subtitleY := titleY + 22
+	hintY := subtitleY + 24
+	ebitenutil.DebugPrintAt(screen, overlay.Title, centerX-(len(overlay.Title)*debugCharWidth)/2, titleY)
+	ebitenutil.DebugPrintAt(screen, overlay.Subtitle, centerX-(len(overlay.Subtitle)*debugCharWidth)/2, subtitleY)
+	ebitenutil.DebugPrintAt(screen, overlay.Hint, centerX-(len(overlay.Hint)*debugCharWidth)/2, hintY)
 }
 
 func (a *app) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -419,4 +478,19 @@ func maxFloat(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+func centeredTextX(text string, screenW int) int {
+	return (screenW - len(text)*debugCharWidth) / 2
+}
+
+func toMenuPresets(in []preset) []graphicui.MenuPreset {
+	out := make([]graphicui.MenuPreset, len(in))
+	for i, p := range in {
+		out[i] = graphicui.MenuPreset{
+			Name:        p.name,
+			Description: p.description,
+		}
+	}
+	return out
 }

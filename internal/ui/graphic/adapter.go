@@ -15,6 +15,26 @@ type HUD struct {
 	Detail string
 }
 
+type StartOverlay struct {
+	Title    string
+	Subtitle string
+	Hint     string
+}
+
+type MenuPreset struct {
+	Name        string
+	Description string
+}
+
+type MainMenu struct {
+	Title       string
+	Subtitle    string
+	PresetLines []string
+	StatsLine1  string
+	StatsLine2  string
+	HelpLine    string
+}
+
 func BuildHUD(modeName string, snap session.SessionSnapshot) HUD {
 	speed := 0.0
 	if snap.TickInterval > 0 {
@@ -52,6 +72,50 @@ func BuildHUD(modeName string, snap session.SessionSnapshot) HUD {
 	}
 
 	return h
+}
+
+func BuildStartOverlay(modeName string, snap session.SessionSnapshot) (StartOverlay, bool) {
+	if snap.Started || snap.IsOver {
+		return StartOverlay{}, false
+	}
+
+	if modeName == "" {
+		modeName = "Balanced"
+	}
+
+	return StartOverlay{
+		Title:    "SNAKE",
+		Subtitle: fmt.Sprintf("Mode: %s", modeName),
+		Hint:     "Press WASD/Arrows to start",
+	}, true
+}
+
+func BuildMainMenu(selected int, presets []MenuPreset, profile session.Profile) MainMenu {
+	menu := MainMenu{
+		Title:    "SNAKE",
+		Subtitle: "Choose a mode and start playing",
+		HelpLine: "Up/Down or 1-3 select | Enter/Space start | Q/Esc quit",
+	}
+
+	menu.PresetLines = make([]string, 0, len(presets))
+	for i, p := range presets {
+		prefix := "  "
+		if i == selected {
+			prefix = "> "
+		}
+		menu.PresetLines = append(menu.PresetLines, fmt.Sprintf("%s%d. %s - %s", prefix, i+1, p.Name, p.Description))
+	}
+
+	menu.StatsLine1 = fmt.Sprintf("BestScore:%d  BestLen:%d  BestTime:%s  Runs:%d",
+		profile.BestScore,
+		profile.BestLength,
+		FormatDuration(time.Duration(profile.BestDurationMillis)*time.Millisecond),
+		profile.RunsPlayed)
+	menu.StatsLine2 = fmt.Sprintf("TotalFood:%d  TotalPlay:%s",
+		profile.TotalFoodEaten,
+		FormatDuration(time.Duration(profile.TotalPlayTimeMillis)*time.Millisecond))
+
+	return menu
 }
 
 func FormatDuration(d time.Duration) string {
