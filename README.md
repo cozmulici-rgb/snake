@@ -134,6 +134,7 @@ After game over, run summary includes deltas vs previous best values.
 
 ```powershell
 .\scripts\dev.ps1 test
+.\scripts\dev.ps1 arch
 .\scripts\dev.ps1 build
 .\scripts\dev.ps1 fmt
 .\scripts\dev.ps1 cover

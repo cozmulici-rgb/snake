@@ -51,6 +51,7 @@ Acceptance criteria:
 - [x] Remove obsolete compatibility paths.
 - [x] Raise domain+app coverage target to at least 85%.
 - [x] Document final architecture and update README developer notes.
+- [x] Add automated dependency-direction checks for domain/app/ui boundaries.
 
 Acceptance criteria:
 - No duplicate gameplay rule implementation remains.
