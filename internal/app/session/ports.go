@@ -6,6 +6,8 @@ import (
 )
 
 type SessionService interface {
+	LoadProfile(ctx context.Context) error
+	Profile() Profile
 	Start(ctx context.Context, cfg PresetConfig) error
 	ApplyDirection(dir DirectionInput) bool
 	Tick()

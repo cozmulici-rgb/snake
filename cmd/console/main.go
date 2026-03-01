@@ -37,7 +37,7 @@ func main() {
 	initScreen()
 	defer restoreScreen()
 
-	svc := session.NewService(system.RealClock{}, system.NewMathRandom(0), infprofile.NewFileRepository(infprofile.DefaultPath()))
+	var svc session.SessionService = session.NewService(system.RealClock{}, system.NewMathRandom(0), infprofile.NewFileRepository(infprofile.DefaultPath()))
 	if err := svc.Start(context.Background(), session.PresetConfig{
 		Name:          "Balanced",
 		Width:         boardWidth,

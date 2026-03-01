@@ -19,6 +19,8 @@ type Service struct {
 	savedRuns int
 }
 
+var _ SessionService = (*Service)(nil)
+
 func NewService(clock Clock, random Random, repo ProfileRepository) *Service {
 	if clock == nil {
 		clock = realClock{}

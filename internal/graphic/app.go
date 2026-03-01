@@ -92,7 +92,7 @@ type app struct {
 	scene          sceneState
 	selectedPreset int
 	currentPreset  preset
-	service        *session.Service
+	service        session.SessionService
 	profileData    session.Profile
 	lastTickAt     time.Time
 	tickInterval   time.Duration
