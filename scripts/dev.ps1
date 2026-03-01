@@ -33,7 +33,7 @@ switch ($Task) {
         & $goExe fmt ./...
     }
     "cover" {
-        & $goExe test ./internal/game "-coverprofile=coverage.out" "-covermode=atomic"
+        & $goExe test ./internal/domain/... ./internal/app/... "-coverprofile=coverage.out" "-covermode=atomic"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         & $goExe tool cover "-func=coverage.out"
         Remove-Item coverage.out -ErrorAction SilentlyContinue

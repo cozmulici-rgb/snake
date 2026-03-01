@@ -1,13 +1,25 @@
 package profile
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 
-	"snake/internal/game"
+	"snake/internal/app/session"
 )
+
+type FileRepository struct {
+	path string
+}
+
+func NewFileRepository(path string) *FileRepository {
+	if path == "" {
+		path = DefaultPath()
+	}
+	return &FileRepository{path: path}
+}
 
 func DefaultPath() string {
 	dir, err := os.UserConfigDir()
@@ -17,9 +29,12 @@ func DefaultPath() string {
 	return filepath.Join(dir, "snake", "profile.json")
 }
 
-func Load(path string) (game.Profile, error) {
-	var p game.Profile
-	data, err := os.ReadFile(path)
+func (r *FileRepository) Load(_ context.Context) (session.Profile, error) {
+	var p session.Profile
+	data, err := os.ReadFile(r.path)
+	if errors.Is(err, os.ErrNotExist) {
+		return p, nil
+	}
 	if err != nil {
 		return p, err
 	}
@@ -32,11 +47,11 @@ func Load(path string) (game.Profile, error) {
 	return p, nil
 }
 
-func Save(path string, p game.Profile) error {
-	if path == "" {
+func (r *FileRepository) Save(_ context.Context, p session.Profile) error {
+	if r.path == "" {
 		return errors.New("empty profile path")
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(r.path), 0o755); err != nil {
 		return err
 	}
 
@@ -46,9 +61,9 @@ func Save(path string, p game.Profile) error {
 	}
 	data = append(data, '\n')
 
-	tmp := path + ".tmp"
+	tmp := r.path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	return os.Rename(tmp, r.path)
 }

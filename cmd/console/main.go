@@ -1,13 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"os"
-	"strings"
 	"time"
 
-	"snake/internal/game"
-	"snake/internal/profile"
+	"snake/internal/app/session"
+	infprofile "snake/internal/infra/profile"
+	"snake/internal/infra/system"
+	consoleui "snake/internal/ui/console"
 
 	"github.com/eiannone/keyboard"
 )
@@ -20,20 +21,6 @@ const (
 	levelStep   = 8 * time.Millisecond
 )
 
-type inputEventKind int
-
-const (
-	eventDir inputEventKind = iota
-	eventQuit
-	eventRestart
-	eventPause
-)
-
-type inputEvent struct {
-	kind inputEventKind
-	dir  game.Direction
-}
-
 func main() {
 	if err := keyboard.Open(); err != nil {
 		fmt.Printf("failed to read keyboard input: %v\n", err)
@@ -43,58 +30,63 @@ func main() {
 		_ = keyboard.Close()
 	}()
 
-	eventCh := make(chan inputEvent, 16)
+	eventCh := make(chan consoleui.Event, 16)
 	errCh := make(chan error, 1)
 	go readInput(eventCh, errCh)
 
 	initScreen()
 	defer restoreScreen()
 
-	cfg := game.Config{Width: boardWidth, Height: boardHeight}
-	state := game.New(cfg, nil)
-	profilePath := profile.DefaultPath()
-	if p, err := profile.Load(profilePath); err == nil {
-		state.ApplyProfile(p)
-	} else if !os.IsNotExist(err) {
-		fmt.Printf("warning: could not load profile: %v\n", err)
+	svc := session.NewService(system.RealClock{}, system.NewMathRandom(0), infprofile.NewFileRepository(infprofile.DefaultPath()))
+	if err := svc.Start(context.Background(), session.PresetConfig{
+		Name:          "Balanced",
+		Width:         boardWidth,
+		Height:        boardHeight,
+		FoodsPerLevel: 5,
+		ObstaclesStep: 2,
+		BaseTick:      baseTick,
+		MinTick:       minTick,
+		LevelStep:     levelStep,
+	}); err != nil {
+		fmt.Printf("failed to initialize game session: %v\n", err)
+		return
 	}
-	savedRuns := state.RunsPlayed()
 
 	for {
-		currentTick := state.TickInterval(baseTick, minTick, levelStep)
+		snap := svc.Snapshot()
+		currentTick := snap.TickInterval
 		ticker := time.NewTicker(currentTick)
-		paused := false
 		drainInput(eventCh)
-		render(state, false, paused, currentTick)
+		render(svc.Snapshot(), false)
 
-		for !state.IsOver() {
+		for !svc.Snapshot().IsOver {
 			select {
 			case ev := <-eventCh:
-				switch ev.kind {
-				case eventDir:
-					state.SetDirection(ev.dir)
-				case eventQuit:
+				switch ev.Kind {
+				case consoleui.EventDir:
+					svc.ApplyDirection(ev.Direction)
+				case consoleui.EventQuit:
+					err := svc.Quit()
 					ticker.Stop()
-					state.FinalizeNow()
-					persistProfile(profilePath, state, &savedRuns)
-					render(state, false, paused, currentTick)
+					if err != nil {
+						fmt.Printf("warning: could not persist profile: %v\n", err)
+					}
+					render(svc.Snapshot(), false)
 					fmt.Println("Goodbye!")
 					return
-				case eventPause:
-					paused = !paused
-					render(state, false, paused, currentTick)
+				case consoleui.EventPause:
+					svc.TogglePause()
+					render(svc.Snapshot(), false)
 				}
 			case <-ticker.C:
-				if !paused {
-					state.Tick()
-					persistProfile(profilePath, state, &savedRuns)
-					nextTick := state.TickInterval(baseTick, minTick, levelStep)
-					if nextTick != currentTick {
-						ticker.Reset(nextTick)
-						currentTick = nextTick
-					}
+				svc.Tick()
+				snap := svc.Snapshot()
+				nextTick := snap.TickInterval
+				if nextTick != currentTick {
+					ticker.Reset(nextTick)
+					currentTick = nextTick
 				}
-				render(state, false, paused, currentTick)
+				render(snap, false)
 			case err := <-errCh:
 				ticker.Stop()
 				fmt.Printf("input error: %v\n", err)
@@ -103,18 +95,22 @@ func main() {
 		}
 
 		ticker.Stop()
-		render(state, true, false, currentTick)
+		render(svc.Snapshot(), true)
 		if !waitForEndMenu(eventCh, errCh) {
-			persistProfile(profilePath, state, &savedRuns)
+			if err := svc.Quit(); err != nil {
+				fmt.Printf("warning: could not persist profile: %v\n", err)
+			}
 			fmt.Println("Goodbye!")
 			return
 		}
-		state.Reset()
-		persistProfile(profilePath, state, &savedRuns)
+		if err := svc.Restart(); err != nil {
+			fmt.Printf("failed to restart game: %v\n", err)
+			return
+		}
 	}
 }
 
-func readInput(eventCh chan<- inputEvent, errCh chan<- error) {
+func readInput(eventCh chan<- consoleui.Event, errCh chan<- error) {
 	for {
 		char, key, err := keyboard.GetKey()
 		if err != nil {
@@ -124,130 +120,24 @@ func readInput(eventCh chan<- inputEvent, errCh chan<- error) {
 			}
 			return
 		}
-
-		var (
-			dir game.Direction
-			ok  bool
-		)
-
-		switch key {
-		case keyboard.KeyArrowUp:
-			dir, ok = game.DirUp, true
-		case keyboard.KeyArrowDown:
-			dir, ok = game.DirDown, true
-		case keyboard.KeyArrowLeft:
-			dir, ok = game.DirLeft, true
-		case keyboard.KeyArrowRight:
-			dir, ok = game.DirRight, true
-		case keyboard.KeyEsc:
-			eventCh <- inputEvent{kind: eventQuit}
-			continue
-		}
-
-		switch char {
-		case 'w', 'W':
-			dir, ok = game.DirUp, true
-		case 's', 'S':
-			dir, ok = game.DirDown, true
-		case 'a', 'A':
-			dir, ok = game.DirLeft, true
-		case 'd', 'D':
-			dir, ok = game.DirRight, true
-		case 'r', 'R':
-			eventCh <- inputEvent{kind: eventRestart}
-			continue
-		case 'p', 'P':
-			eventCh <- inputEvent{kind: eventPause}
-			continue
-		case 'q', 'Q':
-			eventCh <- inputEvent{kind: eventQuit}
-			continue
-		}
-
-		if ok {
-			eventCh <- inputEvent{kind: eventDir, dir: dir}
+		if ev, ok := consoleui.MapInput(char, key); ok {
+			eventCh <- ev
 		}
 	}
 }
 
-func render(state *game.State, showEndMenu bool, paused bool, tickInterval time.Duration) {
-	var b strings.Builder
-	width := state.Width()
-	height := state.Height()
-	snake := state.Snake()
-	obstacles := state.Obstacles()
-	food := state.Food()
-	started := state.Started()
-	speed := 0.0
-	if tickInterval > 0 {
-		speed = 1 / tickInterval.Seconds()
-	}
-
-	b.Grow((width + 4) * (height + 14))
-	b.WriteString("\x1b[H")
-	b.WriteString("Snake (Console)\n")
-	b.WriteString(fmt.Sprintf("Score:%d  Length:%d  Level:%d  Food:%d  NextLvl:%d  Obst:%d  Speed:%.1f/s  Time:%s\n",
-		state.Score(), state.SnakeLength(), state.Level(), state.FoodEaten(), state.FoodsToNextLevel(), state.ObstacleCount(), speed, formatDuration(state.Elapsed())))
-	b.WriteString(fmt.Sprintf("BestScore:%d  BestLength:%d  BestTime:%s  Runs:%d  TotalTime:%s\n\n",
-		state.BestScore(), state.BestLength(), formatDuration(state.BestDuration()), state.RunsPlayed(), formatDuration(state.TotalPlayTime())))
-
-	for y := 0; y < height+2; y++ {
-		for x := 0; x < width+2; x++ {
-			switch {
-			case x == 0 || y == 0 || x == width+1 || y == height+1:
-				b.WriteByte('#')
-			default:
-				p := game.Point{X: x - 1, Y: y - 1}
-				switch {
-				case p == food:
-					b.WriteByte('*')
-				case contains(obstacles, p):
-					b.WriteByte('x')
-				case len(snake) > 0 && p == snake[0]:
-					b.WriteByte('@')
-				case contains(snake[1:], p):
-					b.WriteByte('o')
-				default:
-					b.WriteByte(' ')
-				}
-			}
-		}
-		b.WriteByte('\n')
-	}
-	b.WriteString("\nControls: WASD or Arrow Keys to move, P pause, Q/Esc quit.\n")
-	if !started {
-		b.WriteString("Press any direction key to start.\n")
-	}
-	if paused {
-		b.WriteString("Paused. Press P to resume.\n")
-	}
-	if showEndMenu {
-		if state.IsWon() {
-			b.WriteString("You win! Press R to restart, Q/Esc to quit.\n")
-		} else {
-			b.WriteString("Game Over! Press R to restart, Q/Esc to quit.\n")
-		}
-		if summary, ok := state.LastRunSummary(); ok {
-			b.WriteString(fmt.Sprintf("Run: Score %d (%s) | Length %d (%s) | Time %s (%s)\n",
-				summary.Score,
-				formatSignedInt(summary.ScoreDeltaVsPrevBest),
-				summary.Length,
-				formatSignedInt(summary.LengthDeltaVsPrevBest),
-				formatDuration(summary.Duration),
-				formatSignedDuration(summary.DurationDeltaVsPrevBest)))
-		}
-	}
-	fmt.Print(b.String())
+func render(snapshot session.SessionSnapshot, showEndMenu bool) {
+	fmt.Print(consoleui.Render(snapshot, showEndMenu))
 }
 
-func waitForEndMenu(eventCh <-chan inputEvent, errCh <-chan error) bool {
+func waitForEndMenu(eventCh <-chan consoleui.Event, errCh <-chan error) bool {
 	for {
 		select {
 		case ev := <-eventCh:
-			switch ev.kind {
-			case eventRestart:
+			switch ev.Kind {
+			case consoleui.EventRestart:
 				return true
-			case eventQuit:
+			case consoleui.EventQuit:
 				return false
 			}
 		case err := <-errCh:
@@ -257,7 +147,7 @@ func waitForEndMenu(eventCh <-chan inputEvent, errCh <-chan error) bool {
 	}
 }
 
-func drainInput(eventCh <-chan inputEvent) {
+func drainInput(eventCh <-chan consoleui.Event) {
 	for {
 		select {
 		case <-eventCh:
@@ -267,54 +157,10 @@ func drainInput(eventCh <-chan inputEvent) {
 	}
 }
 
-func contains(parts []game.Point, p game.Point) bool {
-	for _, s := range parts {
-		if s == p {
-			return true
-		}
-	}
-	return false
-}
-
-func formatDuration(d time.Duration) string {
-	if d < 0 {
-		d = 0
-	}
-	totalSeconds := int(d.Seconds())
-	minutes := totalSeconds / 60
-	seconds := totalSeconds % 60
-	return fmt.Sprintf("%02d:%02d", minutes, seconds)
-}
-
-func formatSignedInt(v int) string {
-	if v > 0 {
-		return fmt.Sprintf("+%d", v)
-	}
-	return fmt.Sprintf("%d", v)
-}
-
-func formatSignedDuration(d time.Duration) string {
-	if d >= 0 {
-		return "+" + formatDuration(d)
-	}
-	return "-" + formatDuration(-d)
-}
-
 func initScreen() {
 	fmt.Print("\x1b[2J\x1b[H\x1b[?25l")
 }
 
 func restoreScreen() {
 	fmt.Print("\x1b[?25h")
-}
-
-func persistProfile(path string, state *game.State, savedRuns *int) {
-	if state.RunsPlayed() == *savedRuns {
-		return
-	}
-	if err := profile.Save(path, state.Profile()); err != nil {
-		fmt.Printf("warning: could not save profile: %v\n", err)
-		return
-	}
-	*savedRuns = state.RunsPlayed()
 }
