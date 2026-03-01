@@ -47,9 +47,16 @@ jobs:
           cache: true
 
       - name: Measure Coverage
+        shell: bash
         run: |
+          set -euo pipefail
           go test ./internal/game -coverprofile=coverage.out -covermode=atomic
           COVERAGE=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub("%","",$3); print $3}')
+          if [ -z "${COVERAGE}" ]; then
+            echo "Failed to parse coverage from coverage.out"
+            go tool cover -func=coverage.out
+            exit 1
+          fi
           echo "Coverage: ${COVERAGE}%"
           THRESHOLD=80
-          awk -v c="$COVERAGE" -v t="$THRESHOLD" 'BEGIN { if (c < t) { exit 1 } }'
+          awk -v c="$COVERAGE" -v t="$THRESHOLD" 'BEGIN { exit !(c+0 >= t+0) }'
