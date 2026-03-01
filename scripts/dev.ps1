@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("console", "graphic", "graphic-fullscreen", "test", "build", "fmt", "cover")]
+    [ValidateSet("console", "graphic", "graphic-fullscreen", "test", "build", "fmt", "cover", "arch")]
     [string]$Task = "graphic"
 )
 
@@ -37,6 +37,9 @@ switch ($Task) {
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         & $goExe tool cover "-func=coverage.out"
         Remove-Item coverage.out -ErrorAction SilentlyContinue
+    }
+    "arch" {
+        & $goExe test ./internal/architecture
     }
 }
 

@@ -42,12 +42,16 @@ internal/
 ## Application Input Ports
 
 - `SessionService`
-  - `Start(config PresetConfig)`
-  - `ApplyDirection(dir Direction)`
-  - `Tick(now time.Time)`
-  - `PauseToggle()`
+  - `LoadProfile(ctx context.Context) error`
+  - `Profile() Profile`
+  - `Start(ctx context.Context, config PresetConfig) error`
+  - `ApplyDirection(dir DirectionInput) bool`
+  - `Tick()`
+  - `TogglePause() bool`
   - `Restart()`
-  - `Quit()`
+  - `Quit() error`
+  - `Snapshot() SessionSnapshot`
+  - `LastRunSummary() (RunSummaryView, bool)`
 
 ## Application Output Ports
 
@@ -71,3 +75,4 @@ internal/
 - App: unit tests with fake repository/clock/RNG.
 - Infra: integration tests against temp file system.
 - UI: lightweight smoke tests and mapping tests.
+- Architecture: dependency-direction guardrails in `internal/architecture/dependency_rules_test.go`.

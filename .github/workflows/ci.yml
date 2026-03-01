@@ -28,6 +28,9 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Architecture Rules
+        run: go test ./internal/architecture
+
       - name: Test
         run: go test ./...
 
