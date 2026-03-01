@@ -24,8 +24,8 @@ jobs:
       - name: Build Windows Binaries
         run: |
           mkdir -p dist
-          GOOS=windows GOARCH=amd64 go build -o dist/snake-console.exe .
-          GOOS=windows GOARCH=amd64 go build -o dist/snake-graphic.exe ./cmd/graphic
+          GOOS=windows GOARCH=amd64 go build -o dist/snake-console.exe ./cmd/console
+          GOOS=windows GOARCH=amd64 go build -o dist/snake-graphic.exe .
 
       - name: Package Artifacts
         run: |

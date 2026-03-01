@@ -13,7 +13,7 @@ From this folder:
 
 ```powershell
 go test ./...
-go run .
+go run ./cmd/console
 ```
 
 Or use the launcher:
@@ -23,16 +23,22 @@ Or use the launcher:
 ```
 
 ### Graphic mode
-Runs in a desktop window:
+Default mode (`go run .`) and desktop window mode:
 
 ```powershell
-go run ./cmd/graphic
+go run .
 ```
 
 Start directly in fullscreen:
 
 ```powershell
-go run ./cmd/graphic --fullscreen
+go run . --fullscreen
+```
+
+Alternative explicit graphic entrypoint:
+
+```powershell
+go run ./cmd/graphic
 ```
 
 ### Dev script (PowerShell)
@@ -55,8 +61,14 @@ Use helper tasks:
 - `D` / `Right Arrow` right
 - `Q` or `Esc` quit
 - `R` restart (game over screen)
+- `M` back to menu (graphic mode game-over screen)
 - `P` pause/resume
 - `F11` toggle fullscreen (graphic mode)
+
+### Graphic Menu Controls
+- `Up` / `Down` (or `W` / `S`) select mode preset
+- `1`, `2`, `3` quick preset select
+- `Enter` or `Space` start game
 
 ## Sprint A Features
 - Live stats bar in both modes: score, snake length, level, food eaten, foods to next level, elapsed time, and speed.
