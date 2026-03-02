@@ -93,8 +93,8 @@ func BuildStartOverlay(modeName string, snap session.SessionSnapshot) (StartOver
 func BuildMainMenu(selected int, presets []MenuPreset, profile session.Profile) MainMenu {
 	menu := MainMenu{
 		Title:    "SNAKE",
-		Subtitle: "Choose a mode and start playing",
-		HelpLine: "Up/Down or 1-3 select | Enter/Space start | Q/Esc quit",
+		Subtitle: "Pick your pace, then launch a run",
+		HelpLine: "Arrows/W/S mode | 1-3 quick select | Enter/Space start | Q/Esc quit",
 	}
 
 	menu.PresetLines = make([]string, 0, len(presets))
