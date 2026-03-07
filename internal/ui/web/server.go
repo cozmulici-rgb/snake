@@ -15,8 +15,6 @@ import (
 	"time"
 
 	"snake/internal/app/session"
-	infprofile "snake/internal/infra/profile"
-	"snake/internal/infra/system"
 )
 
 const (
@@ -150,10 +148,9 @@ type inputRequest struct {
 	Direction string `json:"direction"`
 }
 
-func Run() error {
-	svc := session.NewService(system.RealClock{}, system.NewMathRandom(0), infprofile.NewFileRepository(infprofile.DefaultPath()))
-	if err := svc.LoadProfile(context.Background()); err != nil {
-		log.Printf("warning: could not load profile: %v", err)
+func Run(svc session.SessionService) error {
+	if svc == nil {
+		return errors.New("session service is required")
 	}
 
 	srv := &server{
