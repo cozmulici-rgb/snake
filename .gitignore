@@ -2,3 +2,4 @@
 *.exe~
 coverage
 coverage.out
+.gocache/

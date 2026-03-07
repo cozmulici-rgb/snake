@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/eiannone/keyboard v0.0.0-20220611211555-0d226195f203
 	github.com/hajimehoshi/ebiten/v2 v2.9.8
+	golang.org/x/image v0.31.0
 )
 
 require (
@@ -14,4 +15,5 @@ require (
 	github.com/jezek/xgb v1.1.1 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 )
