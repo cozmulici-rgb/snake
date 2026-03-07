@@ -30,6 +30,8 @@ flowchart LR
   - Historical migration backlog and completion status.
 - `docs/adr/0001-ddd-boundaries.md`
   - Architectural decision record for bounded contexts and layers.
+- `docs/workflows/create-pr.md`
+  - Team memory for creating pull requests via browser or GitHub CLI.
 
 ## Usage
 
