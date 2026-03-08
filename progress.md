@@ -20,3 +20,27 @@ Original prompt: fix it
 - Reworked HUD styling and breakpoints so the grouped layout remains readable on desktop and narrow screens.
 - 2026-03-07: Added screenshot-capture memory in `docs/workflows/capture-game-screenshots.md`.
 - Includes the server-restart requirement for embedded assets, Playwright install fix under the skill directory, capture commands, and the API-freeze workaround for deterministic overlays.
+- 2026-03-07: Implemented Phase 2 board readability updates in `internal/ui/web/static/app.js`.
+- Reduced grid dominance, darkened the board surface, softened fog, and rebalanced scene lighting.
+- Added stronger visual separation for gameplay objects: brighter snake head with a direction marker, softer snake body glow, pulsing food emissive/glow, and purple-blue obstacle materials.
+- Browser validation artifacts:
+- `output/web-game-phase2-ready`, `output/web-game-phase2-live`, and `output/web-game-phase2-obstacles` confirm the updated board/object contrast in screenshots and matching `render_game_to_text` state.
+- 2026-03-07: Added web developer mode for bypassing to any level.
+- Backend changes:
+- Added developer-mode-aware level bypass support in `internal/domain/gameplay/aggregate.go` and `internal/app/session/service.go`.
+- Developer bypass changes the active level progression offset and obstacle count without faking score/food history, and developer runs do not update saved profile stats.
+- Exposed `/api/developer-mode` and `/api/developer-level` in `internal/ui/web/server.go` with test coverage in `internal/ui/web/server_test.go`.
+- Frontend changes:
+- Added a collapsible `Developer Mode` panel in `internal/ui/web/static/index.html` with enable toggle and direct level input/action.
+- Synced the web HUD/dev panel with server state in `internal/ui/web/static/app.js`, including `developer_mode` in `window.render_game_to_text`.
+- Validation:
+- `go test ./...` passed after the changes.
+- Browser capture in `output/web-game-developer-mode-open-v2` shows developer mode enabled, level jumped to 6, obstacle count increased, and no `errors-*.json` artifacts were produced.
+- 2026-03-07: Continued Phase 2 board readability with a second visual pass in `internal/ui/web/static/app.js`.
+- Added a clearer board frame and a subtle board hotspot so the play surface feels less uniformly flat.
+- Lowered minor grid dominance further while keeping stronger major grid rhythm every five cells.
+- Added contact shadows under the snake, food, and obstacles so gameplay pieces detach from the board faster at a glance.
+- Validation:
+- `go test ./...` still passes.
+- Browser capture in `output/web-game-phase2-continue` shows the updated board framing/shadows in a level-6 obstacle state, and `state-0.json` matches the screenshot with `developer_mode: true`.
+- No `errors-*.json` files were produced for `output/web-game-phase2-continue`.

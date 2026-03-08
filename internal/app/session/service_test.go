@@ -203,6 +203,50 @@ func TestLastRunSummaryAfterQuit(t *testing.T) {
 	}
 }
 
+func TestDeveloperModeBypassSetsSnapshotLevel(t *testing.T) {
+	clk := &fakeClock{now: time.Unix(100, 0)}
+	svc := NewService(clk, fakeRandom{}, &fakeRepo{})
+	svc.SetDeveloperMode(true)
+	if err := svc.Start(context.Background(), PresetConfig{Width: 6, Height: 6, FoodsPerLevel: 2, ObstaclesStep: 1}); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	if err := svc.BypassLevel(4); err != nil {
+		t.Fatalf("bypass level failed: %v", err)
+	}
+
+	snap := svc.Snapshot()
+	if snap.Level != 4 {
+		t.Fatalf("unexpected snapshot level after bypass: got=%d want=4", snap.Level)
+	}
+	if len(snap.Obstacles) != 3 {
+		t.Fatalf("unexpected obstacle count after bypass: got=%d want=3", len(snap.Obstacles))
+	}
+}
+
+func TestDeveloperModeSkipsProfileSaveOnQuit(t *testing.T) {
+	clk := &fakeClock{now: time.Unix(100, 0)}
+	repo := &fakeRepo{}
+	svc := NewService(clk, fakeRandom{}, repo)
+	svc.SetDeveloperMode(true)
+	if err := svc.Start(context.Background(), PresetConfig{Width: 6, Height: 6}); err != nil {
+		t.Fatalf("start failed: %v", err)
+	}
+
+	svc.ApplyDirection(DirectionRight)
+	clk.now = clk.now.Add(time.Second)
+	if err := svc.Quit(); err != nil {
+		t.Fatalf("quit failed: %v", err)
+	}
+
+	if len(repo.saved) != 0 {
+		t.Fatalf("developer mode should not persist profile saves, got=%d", len(repo.saved))
+	}
+	if svc.Snapshot().RunsPlayed != 0 {
+		t.Fatalf("developer mode should not count runs")
+	}
+}
+
 func TestHelpers(t *testing.T) {
 	cfg := withDefaults(PresetConfig{})
 	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.BaseTick <= 0 || cfg.MinTick <= 0 {

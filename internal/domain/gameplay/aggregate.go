@@ -1,6 +1,7 @@
 package gameplay
 
 import (
+	"errors"
 	"math/rand"
 	"time"
 )
@@ -32,6 +33,8 @@ type Game struct {
 	totalPlayTime time.Duration
 	lastRun       RunSummary
 	hasLastRun    bool
+	levelOffset   int
+	developerMode bool
 	rng           RNG
 }
 
@@ -125,7 +128,7 @@ func (g *Game) Tick(now time.Time) {
 		prevLevel := g.level
 		g.score++
 		g.foodEaten++
-		g.level = 1 + g.foodEaten/g.foodsPerLevel
+		g.level = g.effectiveLevel()
 		if g.level != prevLevel {
 			g.regenerateObstacles()
 		}
@@ -158,6 +161,7 @@ func (g *Game) Reset(now time.Time) {
 	g.score = 0
 	g.foodEaten = 0
 	g.level = 1
+	g.levelOffset = 0
 	g.started = false
 	g.over = false
 	g.won = false
@@ -179,6 +183,29 @@ func (g *Game) Finalize(now time.Time) {
 		g.endedAt = now
 	}
 	g.finalizeRun(now)
+}
+
+func (g *Game) SetDeveloperMode(enabled bool) {
+	g.developerMode = enabled
+}
+
+func (g *Game) BypassToLevel(level int) error {
+	if level < 1 {
+		return errors.New("level must be at least 1")
+	}
+	if g.over {
+		return errors.New("cannot bypass level after game over")
+	}
+
+	g.levelOffset = level - g.baseLevel()
+	g.level = g.effectiveLevel()
+	g.regenerateObstacles()
+	if contains(g.obstacles, g.food) && !g.placeFood() {
+		g.over = true
+		g.won = true
+	}
+
+	return nil
 }
 
 func (g *Game) Snapshot(now time.Time) Snapshot {
@@ -379,18 +406,20 @@ func (g *Game) finalizeRun(now time.Time) {
 	prevBestLength := g.bestLength
 	prevBestDuration := g.bestDuration
 
-	g.runsPlayed++
-	g.totalFood += g.foodEaten
-	g.totalPlayTime += duration
+	if !g.developerMode {
+		g.runsPlayed++
+		g.totalFood += g.foodEaten
+		g.totalPlayTime += duration
 
-	if g.score > g.bestScore {
-		g.bestScore = g.score
-	}
-	if len(g.snake) > g.bestLength {
-		g.bestLength = len(g.snake)
-	}
-	if duration > g.bestDuration {
-		g.bestDuration = duration
+		if g.score > g.bestScore {
+			g.bestScore = g.score
+		}
+		if len(g.snake) > g.bestLength {
+			g.bestLength = len(g.snake)
+		}
+		if duration > g.bestDuration {
+			g.bestDuration = duration
+		}
 	}
 
 	g.lastRun = RunSummary{
@@ -403,12 +432,27 @@ func (g *Game) finalizeRun(now time.Time) {
 		ScoreDeltaVsPrevBest:    g.score - prevBestScore,
 		LengthDeltaVsPrevBest:   len(g.snake) - prevBestLength,
 		DurationDeltaVsPrevBest: duration - prevBestDuration,
-		NewBestScore:            g.score > prevBestScore,
-		NewBestLength:           len(g.snake) > prevBestLength,
-		NewBestDuration:         duration > prevBestDuration,
+		NewBestScore:            !g.developerMode && g.score > prevBestScore,
+		NewBestLength:           !g.developerMode && len(g.snake) > prevBestLength,
+		NewBestDuration:         !g.developerMode && duration > prevBestDuration,
 	}
 	g.hasLastRun = true
 	g.runFinalized = true
+}
+
+func (g *Game) baseLevel() int {
+	if g.foodsPerLevel <= 0 {
+		return 1
+	}
+	return 1 + g.foodEaten/g.foodsPerLevel
+}
+
+func (g *Game) effectiveLevel() int {
+	level := g.baseLevel() + g.levelOffset
+	if level < 1 {
+		return 1
+	}
+	return level
 }
 
 func isCardinal(dir Direction) bool {

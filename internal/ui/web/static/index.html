@@ -337,6 +337,72 @@
       color: var(--danger);
     }
 
+    .dev-tools {
+      border: 1px solid rgba(141, 199, 255, 0.1);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.03);
+      overflow: hidden;
+    }
+
+    .dev-tools summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 12px 14px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .dev-tools summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .dev-body {
+      display: grid;
+      gap: 12px;
+      padding: 0 14px 14px;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .toggle-row input {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+
+    .dev-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .dev-actions input {
+      width: 100%;
+      min-height: 48px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      padding: 0 14px;
+      font: inherit;
+    }
+
+    .dev-hint {
+      color: var(--muted-2);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
     .overlay-row {
       display: grid;
       gap: 18px;
@@ -520,6 +586,10 @@
         display: none;
       }
 
+      .dev-actions {
+        grid-template-columns: 1fr;
+      }
+
       button,
       select {
         min-height: 48px;
@@ -580,6 +650,20 @@
             <button id="pause-btn">Pause</button>
           </div>
           <span class="status" id="status-text">Connecting...</span>
+          <details class="dev-tools">
+            <summary>Developer Mode</summary>
+            <div class="dev-body">
+              <label class="toggle-row" for="developer-mode-toggle">
+                <input type="checkbox" id="developer-mode-toggle">
+                <span>Enable level bypass</span>
+              </label>
+              <div class="dev-actions">
+                <input id="developer-level-input" type="number" min="1" step="1" value="1" inputmode="numeric">
+                <button id="developer-level-btn">Jump To Level</button>
+              </div>
+              <div class="dev-hint" id="developer-hint">Enable developer mode to jump the current run to any level. Developer runs do not update saved stats.</div>
+            </div>
+          </details>
         </div>
         <aside class="overlay-side">
           <div>Use the keyboard to control the snake. The playfield shifts to keep the board visible while menus only appear when action is required.</div>

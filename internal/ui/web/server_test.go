@@ -26,8 +26,11 @@ type fakeSessionService struct {
 	tickCalls         int
 	togglePauseCalls  int
 	restartCalls      int
+	setDeveloperCalls []bool
+	bypassCalls       []int
 	applyResult       bool
 	togglePauseResult bool
+	bypassErr         error
 	onStart           func(cfg session.PresetConfig)
 	onApplyDirection  func(dir session.DirectionInput)
 	onTick            func()
@@ -53,6 +56,15 @@ func (f *fakeSessionService) ApplyDirection(dir session.DirectionInput) bool {
 		f.onApplyDirection(dir)
 	}
 	return f.applyResult
+}
+
+func (f *fakeSessionService) SetDeveloperMode(enabled bool) {
+	f.setDeveloperCalls = append(f.setDeveloperCalls, enabled)
+}
+
+func (f *fakeSessionService) BypassLevel(level int) error {
+	f.bypassCalls = append(f.bypassCalls, level)
+	return f.bypassErr
 }
 
 func (f *fakeSessionService) Tick() {
@@ -354,6 +366,71 @@ func TestHandleRestartResetsTimingOnSuccess(t *testing.T) {
 	}
 	if srv.currentTickDur != 120*time.Millisecond {
 		t.Fatalf("unexpected tick duration: got=%v want=%v", srv.currentTickDur, 120*time.Millisecond)
+	}
+}
+
+func TestHandleDeveloperModeTogglesState(t *testing.T) {
+	svc := &fakeSessionService{}
+	srv := newTestServer(svc)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/developer-mode", strings.NewReader(`{"enabled":true}`))
+
+	srv.handleDeveloperMode(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status: got=%d want=%d", rec.Code, http.StatusOK)
+	}
+	if !srv.developerMode {
+		t.Fatalf("expected developer mode to be enabled on server")
+	}
+	if len(svc.setDeveloperCalls) != 1 || !svc.setDeveloperCalls[0] {
+		t.Fatalf("expected service developer toggle call, got=%v", svc.setDeveloperCalls)
+	}
+	if !strings.Contains(rec.Body.String(), `"developer_mode":true`) {
+		t.Fatalf("expected response to include developer mode state, got=%s", rec.Body.String())
+	}
+}
+
+func TestHandleDeveloperLevelRequiresDeveloperMode(t *testing.T) {
+	srv := newTestServer(&fakeSessionService{})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/developer-level", strings.NewReader(`{"level":4}`))
+
+	srv.handleDeveloperLevel(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("unexpected status: got=%d want=%d", rec.Code, http.StatusForbidden)
+	}
+}
+
+func TestHandleDeveloperLevelAppliesBypassAndResetsTiming(t *testing.T) {
+	svc := &fakeSessionService{
+		snapshot: session.SessionSnapshot{
+			Width:        boardWidth,
+			Height:       boardHeight,
+			Started:      true,
+			TickInterval: 88 * time.Millisecond,
+			Level:        6,
+		},
+	}
+	srv := newTestServer(svc)
+	srv.developerMode = true
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/developer-level", strings.NewReader(`{"level":6}`))
+
+	srv.handleDeveloperLevel(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unexpected status: got=%d want=%d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if len(svc.bypassCalls) != 1 || svc.bypassCalls[0] != 6 {
+		t.Fatalf("expected bypass level call, got=%v", svc.bypassCalls)
+	}
+	if srv.currentTickDur != 88*time.Millisecond {
+		t.Fatalf("unexpected tick duration after bypass: got=%v want=%v", srv.currentTickDur, 88*time.Millisecond)
+	}
+	if srv.lastTickAt.IsZero() {
+		t.Fatalf("expected tick anchor reset after live bypass")
 	}
 }
 

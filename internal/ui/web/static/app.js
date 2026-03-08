@@ -15,6 +15,10 @@ const presetSelect = document.getElementById("preset-select");
 const startBtn = document.getElementById("start-btn");
 const pauseBtn = document.getElementById("pause-btn");
 const restartBtn = document.getElementById("restart-btn");
+const developerModeToggle = document.getElementById("developer-mode-toggle");
+const developerLevelInput = document.getElementById("developer-level-input");
+const developerLevelBtn = document.getElementById("developer-level-btn");
+const developerHint = document.getElementById("developer-hint");
 const statusText = document.getElementById("status-text");
 const statusBar = document.querySelector(".status-bar");
 const layoutGap = 18;
@@ -24,9 +28,12 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setScissorTest(true);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.08;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x08131e, 18, 40);
+scene.fog = new THREE.Fog(0x07111b, 28, 58);
 
 const camera = new THREE.OrthographicCamera(
   (-18 * window.innerWidth) / window.innerHeight,
@@ -40,36 +47,149 @@ camera.position.set(0, 24, 0);
 camera.up.set(0, 0, -1);
 camera.lookAt(0, 0, 0);
 
-const ambient = new THREE.AmbientLight(0xa7d8ff, 1.7);
+const ambient = new THREE.AmbientLight(0xa7d8ff, 1.2);
 scene.add(ambient);
 
-const keyLight = new THREE.DirectionalLight(0xffffff, 1.6);
-keyLight.position.set(8, 16, 10);
+const hemisphere = new THREE.HemisphereLight(0xa8deff, 0x03070d, 1.05);
+scene.add(hemisphere);
+
+const keyLight = new THREE.DirectionalLight(0xf8fbff, 1.35);
+keyLight.position.set(9, 18, 12);
 scene.add(keyLight);
 
-const rimLight = new THREE.DirectionalLight(0x7dffb3, 0.9);
-rimLight.position.set(-10, 12, -8);
+const rimLight = new THREE.DirectionalLight(0x7dffb3, 0.7);
+rimLight.position.set(-12, 10, -10);
 scene.add(rimLight);
 
-const boardGroup = new THREE.Group();
-const snakeGroup = new THREE.Group();
-const obstacleGroup = new THREE.Group();
-const foodGroup = new THREE.Group();
-scene.add(boardGroup, snakeGroup, obstacleGroup, foodGroup);
+const warmFillLight = new THREE.DirectionalLight(0xff9d72, 0.45);
+warmFillLight.position.set(7, 10, -6);
+scene.add(warmFillLight);
 
-const boardMaterial = new THREE.MeshStandardMaterial({ color: 0x122537, metalness: 0.08, roughness: 0.78 });
-const gridMaterial = new THREE.LineBasicMaterial({ color: 0x31556d, transparent: true, opacity: 0.6 });
-const snakeHeadMaterial = new THREE.MeshStandardMaterial({ color: 0x89ff9d, emissive: 0x0a4014, roughness: 0.3 });
-const snakeBodyMaterial = new THREE.MeshStandardMaterial({ color: 0x33d37b, emissive: 0x082313, roughness: 0.4 });
-const obstacleMaterial = new THREE.MeshStandardMaterial({ color: 0x95a6b5, roughness: 0.75 });
-const foodMaterial = new THREE.MeshStandardMaterial({ color: 0xff7c68, emissive: 0x64190b, roughness: 0.2 });
-const snakeHeadGeometry = new THREE.BoxGeometry(0.92, 0.92, 0.92);
-const snakeBodyGeometry = new THREE.BoxGeometry(0.82, 0.7, 0.82);
-const obstacleGeometry = new THREE.BoxGeometry(0.84, 0.84, 0.84);
-const foodGeometry = new THREE.SphereGeometry(0.34, 24, 24);
+const boardGroup = new THREE.Group();
+const snakeShadowGroup = new THREE.Group();
+const obstacleShadowGroup = new THREE.Group();
+const foodShadowGroup = new THREE.Group();
+const snakeGlowGroup = new THREE.Group();
+const snakeGroup = new THREE.Group();
+const headMarkerGroup = new THREE.Group();
+const obstacleGlowGroup = new THREE.Group();
+const obstacleGroup = new THREE.Group();
+const foodGlowGroup = new THREE.Group();
+const foodGroup = new THREE.Group();
+scene.add(
+  boardGroup,
+  snakeShadowGroup,
+  obstacleShadowGroup,
+  foodShadowGroup,
+  snakeGlowGroup,
+  snakeGroup,
+  headMarkerGroup,
+  obstacleGlowGroup,
+  obstacleGroup,
+  foodGlowGroup,
+  foodGroup,
+);
+
+const boardMaterial = new THREE.MeshStandardMaterial({
+  color: 0x0c1724,
+  emissive: 0x07111a,
+  emissiveIntensity: 0.75,
+  metalness: 0.04,
+  roughness: 0.92,
+});
+const boardAccentMaterial = new THREE.MeshBasicMaterial({
+  color: 0x194264,
+  transparent: true,
+  opacity: 0.09,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+const boardAccentOuterMaterial = new THREE.MeshBasicMaterial({
+  color: 0x10263c,
+  transparent: true,
+  opacity: 0.12,
+  depthWrite: false,
+});
+const gridMaterial = new THREE.LineBasicMaterial({ color: 0x84a8c2, transparent: true, opacity: 0.11 });
+const majorGridMaterial = new THREE.LineBasicMaterial({ color: 0x8fb3d0, transparent: true, opacity: 0.17 });
+const boardFrameMaterial = new THREE.LineBasicMaterial({ color: 0xa9d5ff, transparent: true, opacity: 0.24 });
+const snakeHeadMaterial = new THREE.MeshStandardMaterial({
+  color: 0xcaffbc,
+  emissive: 0x2dff74,
+  emissiveIntensity: 1.1,
+  roughness: 0.2,
+  metalness: 0.06,
+});
+const snakeBodyMaterial = new THREE.MeshStandardMaterial({
+  color: 0x36dc80,
+  emissive: 0x0d542f,
+  emissiveIntensity: 0.8,
+  roughness: 0.34,
+  metalness: 0.04,
+});
+const obstacleMaterial = new THREE.MeshStandardMaterial({
+  color: 0x6d83ff,
+  emissive: 0x182d82,
+  emissiveIntensity: 0.8,
+  roughness: 0.44,
+  metalness: 0.12,
+});
+const foodMaterial = new THREE.MeshStandardMaterial({
+  color: 0xffaf64,
+  emissive: 0xff5d22,
+  emissiveIntensity: 1.35,
+  roughness: 0.14,
+  metalness: 0.05,
+});
+const snakeHeadGlowMaterial = new THREE.MeshBasicMaterial({
+  color: 0x63ffa2,
+  transparent: true,
+  opacity: 0.28,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+const snakeBodyGlowMaterial = new THREE.MeshBasicMaterial({
+  color: 0x36dc80,
+  transparent: true,
+  opacity: 0.14,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+const obstacleGlowMaterial = new THREE.MeshBasicMaterial({
+  color: 0x667cff,
+  transparent: true,
+  opacity: 0.18,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+const foodGlowMaterial = new THREE.MeshBasicMaterial({
+  color: 0xff7d45,
+  transparent: true,
+  opacity: 0.3,
+  depthWrite: false,
+  blending: THREE.AdditiveBlending,
+});
+const snakeHeadShadowMaterial = new THREE.MeshBasicMaterial({ color: 0x041109, transparent: true, opacity: 0.28, depthWrite: false });
+const snakeBodyShadowMaterial = new THREE.MeshBasicMaterial({ color: 0x041109, transparent: true, opacity: 0.16, depthWrite: false });
+const obstacleShadowMaterial = new THREE.MeshBasicMaterial({ color: 0x040814, transparent: true, opacity: 0.18, depthWrite: false });
+const foodShadowMaterial = new THREE.MeshBasicMaterial({ color: 0x140703, transparent: true, opacity: 0.18, depthWrite: false });
+const headMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0x0b2415 });
+const snakeHeadGeometry = new THREE.BoxGeometry(1.04, 0.96, 1.04);
+const snakeBodyGeometry = new THREE.BoxGeometry(0.88, 0.56, 0.88);
+const obstacleGeometry = new THREE.BoxGeometry(0.86, 0.78, 0.86);
+const foodGeometry = new THREE.SphereGeometry(0.4, 28, 28);
+const snakeGlowGeometry = new THREE.CircleGeometry(0.56, 24);
+const obstacleGlowGeometry = new THREE.CircleGeometry(0.56, 24);
+const foodGlowGeometry = new THREE.CircleGeometry(0.68, 28);
+const boardAccentGeometry = new THREE.CircleGeometry(0.5, 48);
+const snakeShadowGeometry = new THREE.CircleGeometry(0.52, 24);
+const obstacleShadowGeometry = new THREE.CircleGeometry(0.5, 24);
+const foodShadowGeometry = new THREE.CircleGeometry(0.48, 24);
+const headMarkerGeometry = new THREE.BoxGeometry(0.2, 0.12, 0.36);
 
 let state = null;
 let foodMesh = null;
+let headMarkerMesh = null;
 let lastBoardSize = { width: 40, height: 40 };
 let sceneViewport = { left: 0, top: 0, size: 0 };
 let lastBoardKey = "";
@@ -93,15 +213,38 @@ function buildBoard(width, height) {
   plane.position.set(0, -0.4, 0);
   boardGroup.add(plane);
 
+  const outerAccent = new THREE.Mesh(boardAccentGeometry, boardAccentOuterMaterial);
+  outerAccent.rotation.x = -Math.PI / 2;
+  outerAccent.position.set(0, -0.14, 0);
+  outerAccent.scale.set(width * 0.92, height * 0.92, 1);
+  boardGroup.add(outerAccent);
+
+  const innerAccent = new THREE.Mesh(boardAccentGeometry, boardAccentMaterial);
+  innerAccent.rotation.x = -Math.PI / 2;
+  innerAccent.position.set(0, -0.13, 0);
+  innerAccent.scale.set(width * 0.54, height * 0.54, 1);
+  boardGroup.add(innerAccent);
+
   for (let x = -width / 2; x <= width / 2; x += 1) {
     const points = [new THREE.Vector3(x, -0.1, -height / 2), new THREE.Vector3(x, -0.1, height / 2)];
-    boardGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), gridMaterial));
+    const material = x % 5 === 0 ? majorGridMaterial : gridMaterial;
+    boardGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material));
   }
 
   for (let z = -height / 2; z <= height / 2; z += 1) {
     const points = [new THREE.Vector3(-width / 2, -0.1, z), new THREE.Vector3(width / 2, -0.1, z)];
-    boardGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), gridMaterial));
+    const material = z % 5 === 0 ? majorGridMaterial : gridMaterial;
+    boardGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material));
   }
+
+  const framePoints = [
+    new THREE.Vector3(-width / 2, -0.08, -height / 2),
+    new THREE.Vector3(width / 2, -0.08, -height / 2),
+    new THREE.Vector3(width / 2, -0.08, height / 2),
+    new THREE.Vector3(-width / 2, -0.08, height / 2),
+    new THREE.Vector3(-width / 2, -0.08, -height / 2),
+  ];
+  boardGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(framePoints), boardFrameMaterial));
 }
 
 function cellPosition(x, y, width, height, lift = 0.5) {
@@ -122,6 +265,13 @@ function ensureMesh(group, index, geometry, material) {
   return mesh;
 }
 
+function ensureFlatMesh(group, index, geometry, material) {
+  const mesh = ensureMesh(group, index, geometry, material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.renderOrder = 1;
+  return mesh;
+}
+
 function fillGroup(group, items, width, height, geometry, material, materialSelector = null) {
   items.forEach((item, index) => {
     const mesh = ensureMesh(group, index, geometry, materialSelector ? materialSelector(index) : material);
@@ -133,6 +283,37 @@ function fillGroup(group, items, width, height, geometry, material, materialSele
 
   for (let index = items.length; index < group.children.length; index += 1) {
     group.children[index].visible = false;
+  }
+}
+
+function fillFlatGroup(group, items, width, height, geometry, material, lift = 0.04, materialSelector = null, scaleSelector = null) {
+  items.forEach((item, index) => {
+    const mesh = ensureFlatMesh(group, index, geometry, materialSelector ? materialSelector(index) : material);
+    if (materialSelector) {
+      mesh.material = materialSelector(index);
+    }
+    mesh.position.copy(cellPosition(item.x, item.y, width, height, lift));
+    const scale = scaleSelector ? scaleSelector(index, item) : 1;
+    mesh.scale.setScalar(scale);
+  });
+
+  for (let index = items.length; index < group.children.length; index += 1) {
+    group.children[index].visible = false;
+  }
+}
+
+function headMarkerPose(direction) {
+  switch (direction) {
+    case "up":
+      return { dx: 0, dz: -0.24, rotationY: 0 };
+    case "down":
+      return { dx: 0, dz: 0.24, rotationY: 0 };
+    case "left":
+      return { dx: -0.24, dz: 0, rotationY: Math.PI / 2 };
+    case "right":
+      return { dx: 0.24, dz: 0, rotationY: Math.PI / 2 };
+    default:
+      return { dx: 0, dz: -0.24, rotationY: 0 };
   }
 }
 
@@ -154,6 +335,28 @@ function renderSnapshot(snapshot) {
     snakeBodyMaterial,
     (index) => (index === 0 ? snakeHeadMaterial : snakeBodyMaterial),
   );
+  fillFlatGroup(
+    snakeShadowGroup,
+    snapshot.snake,
+    snapshot.width,
+    snapshot.height,
+    snakeShadowGeometry,
+    snakeBodyShadowMaterial,
+    0.018,
+    (index) => (index === 0 ? snakeHeadShadowMaterial : snakeBodyShadowMaterial),
+    (index) => (index === 0 ? 1.04 : 0.94),
+  );
+  fillFlatGroup(
+    snakeGlowGroup,
+    snapshot.snake,
+    snapshot.width,
+    snapshot.height,
+    snakeGlowGeometry,
+    snakeBodyGlowMaterial,
+    0.03,
+    (index) => (index === 0 ? snakeHeadGlowMaterial : snakeBodyGlowMaterial),
+    (index) => (index === 0 ? 1.3 : 1.05),
+  );
 
   fillGroup(
     obstacleGroup,
@@ -163,6 +366,28 @@ function renderSnapshot(snapshot) {
     obstacleGeometry,
     obstacleMaterial,
   );
+  fillFlatGroup(
+    obstacleShadowGroup,
+    snapshot.obstacles,
+    snapshot.width,
+    snapshot.height,
+    obstacleShadowGeometry,
+    obstacleShadowMaterial,
+    0.018,
+    null,
+    () => 0.96,
+  );
+  fillFlatGroup(
+    obstacleGlowGroup,
+    snapshot.obstacles,
+    snapshot.width,
+    snapshot.height,
+    obstacleGlowGeometry,
+    obstacleGlowMaterial,
+    0.03,
+    null,
+    () => 1.08,
+  );
 
   if (!foodMesh) {
     foodMesh = new THREE.Mesh(foodGeometry, foodMaterial);
@@ -170,6 +395,45 @@ function renderSnapshot(snapshot) {
   }
   foodMesh.visible = true;
   foodMesh.position.copy(cellPosition(snapshot.food.x, snapshot.food.y, snapshot.width, snapshot.height, 0.6));
+
+  fillFlatGroup(
+    foodShadowGroup,
+    [snapshot.food],
+    snapshot.width,
+    snapshot.height,
+    foodShadowGeometry,
+    foodShadowMaterial,
+    0.018,
+    null,
+    () => 1,
+  );
+  fillFlatGroup(
+    foodGlowGroup,
+    [snapshot.food],
+    snapshot.width,
+    snapshot.height,
+    foodGlowGeometry,
+    foodGlowMaterial,
+    0.03,
+    null,
+    () => 1.1,
+  );
+
+  if (!headMarkerMesh) {
+    headMarkerMesh = new THREE.Mesh(headMarkerGeometry, headMarkerMaterial);
+    headMarkerGroup.add(headMarkerMesh);
+  }
+
+  if (snapshot.snake.length > 0) {
+    const head = snapshot.snake[0];
+    const pose = headMarkerPose(snapshot.direction);
+    const headPosition = cellPosition(head.x, head.y, snapshot.width, snapshot.height, 0.96);
+    headMarkerMesh.visible = true;
+    headMarkerMesh.position.set(headPosition.x + pose.dx, headPosition.y, headPosition.z + pose.dz);
+    headMarkerMesh.rotation.y = pose.rotationY;
+  } else {
+    headMarkerMesh.visible = false;
+  }
 }
 
 function stat(label, value) {
@@ -297,6 +561,16 @@ function updateHUD(payload) {
   pauseBtn.disabled = !snapshot.width || snapshot.is_over;
   restartBtn.disabled = !snapshot.width;
   startBtn.disabled = snapshot.started && !snapshot.is_over;
+  developerModeToggle.checked = Boolean(payload.developer_mode);
+  developerModeToggle.disabled = false;
+  developerLevelInput.disabled = !payload.developer_mode || !snapshot.width || snapshot.is_over;
+  developerLevelBtn.disabled = developerLevelInput.disabled;
+  developerHint.textContent = payload.developer_mode
+    ? "Developer mode is active. Level jumps keep progression coherent and do not update saved stats."
+    : "Enable developer mode to jump the current run to any level. Developer runs do not update saved stats.";
+  if (document.activeElement !== developerLevelInput || !Number(developerLevelInput.value) || Number(developerLevelInput.value) < 1) {
+    developerLevelInput.value = String(Math.max(1, snapshot.level || 1));
+  }
 }
 
 async function callJSON(url, body) {
@@ -331,6 +605,7 @@ function renderGameToText() {
   const progress = snapshot ? levelProgress(snapshot, foodsPerLevel) : null;
   const payload = {
     mode: overlay.classList.contains("hidden") ? "live" : (overlayTitle.textContent || "overlay").toLowerCase(),
+    developer_mode: Boolean(state?.developer_mode),
     viewport: sceneViewport,
     snapshot: snapshot ? {
       width: snapshot.width,
@@ -390,6 +665,28 @@ async function refresh() {
   }
 }
 
+async function updateDeveloperMode(enabled) {
+  try {
+    await callJSON("/api/developer-mode", { enabled });
+    setStatus(enabled ? "Developer mode enabled" : "Developer mode disabled");
+    await refresh();
+  } catch (error) {
+    developerModeToggle.checked = !enabled;
+    setStatus(error.message, true);
+  }
+}
+
+async function bypassLevel(level) {
+  try {
+    await callJSON("/api/developer-level", { level });
+    developerLevelInput.value = String(level);
+    setStatus(`Jumped to level ${level}`);
+    await refresh();
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
 function nextRefreshDelay() {
   const tick = state?.snapshot?.tick_interval_millis ?? 140;
   return Math.max(33, Math.min(80, Math.floor(tick / 2)));
@@ -409,7 +706,25 @@ function animate() {
   const time = performance.now() * 0.001;
   if (foodMesh) {
     foodMesh.rotation.y = time * 1.6;
-    foodMesh.rotation.x = 0.35 + Math.sin(time * 1.4) * 0.08;
+    foodMesh.rotation.x = 0.45 + Math.sin(time * 1.9) * 0.08;
+    foodMesh.position.y = 0.6 + Math.sin(time * 3.2) * 0.07;
+    foodMesh.scale.setScalar(1 + Math.sin(time * 3.2) * 0.08);
+  }
+  foodMaterial.emissiveIntensity = 1.35 + (Math.sin(time * 3.2) + 1) * 0.18;
+  foodGlowMaterial.opacity = 0.26 + (Math.sin(time * 3.2) + 1) * 0.05;
+  snakeHeadMaterial.emissiveIntensity = 1.04 + (Math.sin(time * 4.4) + 1) * 0.07;
+  snakeHeadGlowMaterial.opacity = 0.23 + (Math.sin(time * 4.4) + 1) * 0.03;
+  if (foodGlowGroup.children[0]?.visible) {
+    const glowPulse = 1.08 + Math.sin(time * 3.2) * 0.12;
+    foodGlowGroup.children[0].scale.setScalar(glowPulse);
+  }
+  if (foodShadowGroup.children[0]?.visible) {
+    const shadowPulse = 0.96 - Math.sin(time * 3.2) * 0.04;
+    foodShadowGroup.children[0].scale.setScalar(shadowPulse);
+  }
+  if (snakeGlowGroup.children[0]?.visible) {
+    const headPulse = 1.24 + Math.sin(time * 4.4) * 0.08;
+    snakeGlowGroup.children[0].scale.setScalar(headPulse);
   }
   renderer.setViewport(
     sceneViewport.left,
@@ -547,6 +862,27 @@ restartBtn.addEventListener("click", async () => {
   } catch (error) {
     setStatus(error.message, true);
   }
+});
+
+developerModeToggle.addEventListener("change", async (event) => {
+  await updateDeveloperMode(event.target.checked);
+});
+
+developerLevelBtn.addEventListener("click", async () => {
+  const level = Number.parseInt(developerLevelInput.value, 10);
+  if (!Number.isFinite(level) || level < 1) {
+    setStatus("Enter a level of 1 or greater", true);
+    return;
+  }
+  await bypassLevel(level);
+});
+
+developerLevelInput.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+  event.preventDefault();
+  developerLevelBtn.click();
 });
 
 refresh();

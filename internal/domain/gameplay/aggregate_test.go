@@ -251,6 +251,42 @@ func TestLevelIncreasesAndObstaclesRegenerate(t *testing.T) {
 	}
 }
 
+func TestDeveloperBypassSetsRequestedLevelAndContinuesProgression(t *testing.T) {
+	g := New(Config{Width: 6, Height: 6, FoodsPerLevel: 2, ObstaclesStep: 1}, &sequenceRNG{values: []int{0}})
+	g.snake = []Point{{X: 1, Y: 1}}
+	g.dir = DirRight
+	g.started = true
+	g.foodEaten = 1
+	g.level = 1
+	g.food = Point{X: 2, Y: 1}
+
+	if err := g.BypassToLevel(4); err != nil {
+		t.Fatalf("bypass level failed: %v", err)
+	}
+
+	snap := g.Snapshot(time.Now())
+	if snap.Level != 4 {
+		t.Fatalf("unexpected bypass level: got=%d want=4", snap.Level)
+	}
+	if len(snap.Obstacles) != 3 {
+		t.Fatalf("unexpected obstacle count after bypass: got=%d want=3", len(snap.Obstacles))
+	}
+
+	g.Tick(time.Now())
+	snap = g.Snapshot(time.Now())
+	if snap.Level != 5 {
+		t.Fatalf("expected progression to continue from bypassed level: got=%d want=5", snap.Level)
+	}
+}
+
+func TestDeveloperBypassRejectsInvalidLevel(t *testing.T) {
+	g := New(Config{Width: 6, Height: 6}, &sequenceRNG{})
+
+	if err := g.BypassToLevel(0); err == nil {
+		t.Fatalf("expected invalid level error")
+	}
+}
+
 func TestRunFinalizationUpdatesBestStats(t *testing.T) {
 	g := New(Config{Width: 4, Height: 4}, &sequenceRNG{})
 	now := time.Now()
@@ -347,6 +383,29 @@ func TestFinalizeRecordsRunWithoutGameOver(t *testing.T) {
 	}
 	if snap.BestScore != 3 {
 		t.Fatalf("unexpected best score after finalize: got=%d want=3", snap.BestScore)
+	}
+}
+
+func TestDeveloperModeDoesNotUpdateProfileStats(t *testing.T) {
+	g := New(Config{Width: 6, Height: 6}, &sequenceRNG{})
+	now := time.Now()
+	g.SetDeveloperMode(true)
+	g.Start(DirRight, now)
+	g.startedAt = now.Add(-time.Second)
+	g.score = 7
+	g.foodEaten = 7
+	g.level = 4
+
+	g.Finalize(now)
+	snap := g.Snapshot(now)
+	if snap.RunsPlayed != 0 {
+		t.Fatalf("developer mode should not record runs: got=%d want=0", snap.RunsPlayed)
+	}
+	if snap.BestScore != 0 {
+		t.Fatalf("developer mode should not update best score: got=%d want=0", snap.BestScore)
+	}
+	if !snap.HasLastRun {
+		t.Fatalf("expected last run summary even in developer mode")
 	}
 }
 

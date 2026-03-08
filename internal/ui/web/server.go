@@ -71,6 +71,7 @@ type server struct {
 	mu             sync.Mutex
 	svc            session.SessionService
 	currentPreset  int
+	developerMode  bool
 	lastTickAt     time.Time
 	currentTickDur time.Duration
 }
@@ -78,6 +79,7 @@ type server struct {
 type stateResponse struct {
 	Presets       []preset          `json:"presets"`
 	CurrentPreset int               `json:"current_preset"`
+	DeveloperMode bool              `json:"developer_mode"`
 	Snapshot      snapshotResponse  `json:"snapshot"`
 	Profile       profileResponse   `json:"profile"`
 	Controls      map[string]string `json:"controls"`
@@ -148,6 +150,14 @@ type inputRequest struct {
 	Direction string `json:"direction"`
 }
 
+type developerModeRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+type developerLevelRequest struct {
+	Level int `json:"level"`
+}
+
 func Run(svc session.SessionService) error {
 	if svc == nil {
 		return errors.New("session service is required")
@@ -175,6 +185,8 @@ func Run(svc session.SessionService) error {
 	mux.HandleFunc("/api/input", srv.handleInput)
 	mux.HandleFunc("/api/pause", srv.handlePause)
 	mux.HandleFunc("/api/restart", srv.handleRestart)
+	mux.HandleFunc("/api/developer-mode", srv.handleDeveloperMode)
+	mux.HandleFunc("/api/developer-level", srv.handleDeveloperLevel)
 
 	log.Printf("web UI listening at http://%s", defaultAddr)
 	return http.ListenAndServe(defaultAddr, mux)
@@ -345,6 +357,61 @@ func (s *server) handleRestart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.stateLocked())
 }
 
+func (s *server) handleDeveloperMode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req developerModeRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.developerMode = req.Enabled
+	s.svc.SetDeveloperMode(req.Enabled)
+	writeJSON(w, http.StatusOK, s.stateLocked())
+}
+
+func (s *server) handleDeveloperLevel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var req developerLevelRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if !s.developerMode {
+		writeError(w, http.StatusForbidden, "developer mode is not enabled")
+		return
+	}
+	if err := s.svc.BypassLevel(req.Level); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	snap := s.svc.Snapshot()
+	s.currentTickDur = snap.TickInterval
+	if snap.Started && !snap.Paused && !snap.IsOver {
+		s.lastTickAt = time.Now()
+	} else {
+		s.lastTickAt = time.Time{}
+	}
+
+	writeJSON(w, http.StatusOK, s.stateLocked())
+}
+
 func (s *server) stateLocked() stateResponse {
 	snap := s.svc.Snapshot()
 	profile := s.svc.Profile()
@@ -352,6 +419,7 @@ func (s *server) stateLocked() stateResponse {
 	return stateResponse{
 		Presets:       presets,
 		CurrentPreset: s.currentPreset,
+		DeveloperMode: s.developerMode,
 		Snapshot:      mapSnapshot(snap),
 		Profile: profileResponse{
 			BestScore:           profile.BestScore,

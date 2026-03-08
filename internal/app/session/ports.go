@@ -10,6 +10,8 @@ type SessionService interface {
 	Profile() Profile
 	Start(ctx context.Context, cfg PresetConfig) error
 	ApplyDirection(dir DirectionInput) bool
+	SetDeveloperMode(enabled bool)
+	BypassLevel(level int) error
 	Tick()
 	TogglePause() bool
 	Restart() error

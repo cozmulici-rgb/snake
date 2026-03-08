@@ -10,13 +10,14 @@ import (
 )
 
 type Service struct {
-	clock     Clock
-	random    Random
-	repo      ProfileRepository
-	game      *gameplay.Game
-	preset    PresetConfig
-	profile   Profile
-	savedRuns int
+	clock         Clock
+	random        Random
+	repo          ProfileRepository
+	game          *gameplay.Game
+	preset        PresetConfig
+	profile       Profile
+	savedRuns     int
+	developerMode bool
 }
 
 var _ SessionService = (*Service)(nil)
@@ -66,6 +67,7 @@ func (s *Service) Start(ctx context.Context, cfg PresetConfig) error {
 		ObstaclesStep: cfg.ObstaclesStep,
 	}, s.random)
 	g.ApplyProfile(profileToDomain(s.profile))
+	g.SetDeveloperMode(s.developerMode)
 
 	s.game = g
 	s.preset = cfg
@@ -87,6 +89,20 @@ func (s *Service) ApplyDirection(dir DirectionInput) bool {
 		return s.game.Start(d, now)
 	}
 	return s.game.SetDirection(d)
+}
+
+func (s *Service) SetDeveloperMode(enabled bool) {
+	s.developerMode = enabled
+	if s.game != nil {
+		s.game.SetDeveloperMode(enabled)
+	}
+}
+
+func (s *Service) BypassLevel(level int) error {
+	if s.game == nil {
+		return errors.New("session is not started")
+	}
+	return s.game.BypassToLevel(level)
 }
 
 func (s *Service) Tick() {
@@ -162,7 +178,7 @@ func (s *Service) LastRunSummary() (RunSummaryView, bool) {
 }
 
 func (s *Service) persistIfNeeded(ctx context.Context) error {
-	if s.repo == nil || s.game == nil {
+	if s.repo == nil || s.game == nil || s.developerMode {
 		return nil
 	}
 	current := s.game.Snapshot(s.clock.Now())
