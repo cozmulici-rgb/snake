@@ -9,3 +9,5 @@ Original prompt: fix it
 - Added `window.render_game_to_text` and `window.advanceTime(ms)` for browser automation.
 - Follow-up mobile fix: moved the narrow overlay to a bottom-sheet position and tightened the mobile HUD/controls so the board remains on screen.
 - Further mobile reduction: hide non-relevant controls by state and remove the secondary help block on very narrow screens to free space for the board.
+- 2026-03-07: Created branch `design/web-redesign-plan` for the next web UI pass.
+- Added `docs/ui/web-redesign-plan.md` to convert the redesign feedback into phased implementation work with priorities and acceptance criteria.

@@ -32,6 +32,8 @@ flowchart LR
   - Architectural decision record for bounded contexts and layers.
 - `docs/workflows/create-pr.md`
   - Team memory for creating pull requests via browser or GitHub CLI.
+- `docs/ui/web-redesign-plan.md`
+  - Roadmap for the next visual and UX pass on the browser-based Three.js UI.
 
 ## Usage
 
