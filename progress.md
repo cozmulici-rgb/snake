@@ -1,0 +1,11 @@
+Original prompt: fix it
+
+- 2026-03-07: Started fix pass for web redesign issues found in review.
+- Scope: mobile control overflow, overlay obstructing board despite copy claiming otherwise, HUD readability, and adding minimal browser test hooks required by the web-game workflow.
+- Updated `internal/ui/web/static/index.html` and `internal/ui/web/static/app.js`:
+- Reworked HUD typography and spacing for readability.
+- Reflowed overlay actions for mobile and changed copy to match the layout.
+- Made viewport layout reserve space for the overlay so the board remains visible.
+- Added `window.render_game_to_text` and `window.advanceTime(ms)` for browser automation.
+- Follow-up mobile fix: moved the narrow overlay to a bottom-sheet position and tightened the mobile HUD/controls so the board remains on screen.
+- Further mobile reduction: hide non-relevant controls by state and remove the secondary help block on very narrow screens to free space for the board.

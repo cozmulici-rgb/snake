@@ -4,6 +4,8 @@ Snake is a Windows game written in Go with two play modes:
 - Graphic mode (default)
 - Console mode
 
+This branch also includes an experimental browser-based Three.js frontend served by Go.
+
 ## Requirements
 - Windows
 - Go 1.24+
@@ -28,6 +30,14 @@ Run console mode:
 go run ./cmd/console
 ```
 
+Run the experimental web mode:
+
+```powershell
+go run ./cmd/web
+```
+
+Then open `http://127.0.0.1:8080` in a browser.
+
 Use the Windows launcher:
 
 ```powershell
@@ -41,6 +51,10 @@ Use the helper script:
 .\scripts\dev.ps1 graphic-fullscreen
 .\scripts\dev.ps1 console
 ```
+
+Notes for web mode:
+- The browser UI currently loads `three` from a CDN import map.
+- Game rules and ticking still run in Go; the browser is only the rendering/input layer.
 
 ## Compile Binaries
 
