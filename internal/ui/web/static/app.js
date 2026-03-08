@@ -55,14 +55,28 @@ const snakeHeadMaterial = new THREE.MeshStandardMaterial({ color: 0x89ff9d, emis
 const snakeBodyMaterial = new THREE.MeshStandardMaterial({ color: 0x33d37b, emissive: 0x082313, roughness: 0.4 });
 const obstacleMaterial = new THREE.MeshStandardMaterial({ color: 0x95a6b5, roughness: 0.75 });
 const foodMaterial = new THREE.MeshStandardMaterial({ color: 0xff7c68, emissive: 0x64190b, roughness: 0.2 });
+const snakeHeadGeometry = new THREE.BoxGeometry(0.92, 0.92, 0.92);
+const snakeBodyGeometry = new THREE.BoxGeometry(0.82, 0.7, 0.82);
+const obstacleGeometry = new THREE.BoxGeometry(0.84, 0.84, 0.84);
+const foodGeometry = new THREE.SphereGeometry(0.34, 24, 24);
 
 let state = null;
 let foodMesh = null;
 let lastBoardSize = { width: 40, height: 40 };
 let sceneViewport = { left: 0, top: 0, size: 0 };
+let lastBoardKey = "";
+let lastHUDKey = "";
+let refreshTimer = null;
+let refreshInFlight = false;
 
 function buildBoard(width, height) {
+  const boardKey = `${width}x${height}`;
+  if (lastBoardKey === boardKey) {
+    return;
+  }
+
   boardGroup.clear();
+  lastBoardKey = boardKey;
 
   const plane = new THREE.Mesh(
     new THREE.BoxGeometry(width + 1, 0.5, height + 1),
@@ -90,13 +104,28 @@ function cellPosition(x, y, width, height, lift = 0.5) {
   );
 }
 
-function fillGroup(group, items, width, height, geometryFactory, materialFactory) {
-  group.clear();
-  items.forEach((item, index) => {
-    const mesh = new THREE.Mesh(geometryFactory(index), materialFactory(index));
-    mesh.position.copy(cellPosition(item.x, item.y, width, height));
+function ensureMesh(group, index, geometry, material) {
+  while (group.children.length <= index) {
+    const mesh = new THREE.Mesh(geometry, material);
     group.add(mesh);
+  }
+  const mesh = group.children[index];
+  mesh.visible = true;
+  return mesh;
+}
+
+function fillGroup(group, items, width, height, geometry, material, materialSelector = null) {
+  items.forEach((item, index) => {
+    const mesh = ensureMesh(group, index, geometry, materialSelector ? materialSelector(index) : material);
+    if (materialSelector) {
+      mesh.material = materialSelector(index);
+    }
+    mesh.position.copy(cellPosition(item.x, item.y, width, height));
   });
+
+  for (let index = items.length; index < group.children.length; index += 1) {
+    group.children[index].visible = false;
+  }
 }
 
 function renderSnapshot(snapshot) {
@@ -113,7 +142,8 @@ function renderSnapshot(snapshot) {
     snapshot.snake,
     snapshot.width,
     snapshot.height,
-    (index) => new THREE.BoxGeometry(index === 0 ? 0.92 : 0.82, index === 0 ? 0.92 : 0.7, index === 0 ? 0.92 : 0.82),
+    snakeBodyGeometry,
+    snakeBodyMaterial,
     (index) => (index === 0 ? snakeHeadMaterial : snakeBodyMaterial),
   );
 
@@ -122,14 +152,16 @@ function renderSnapshot(snapshot) {
     snapshot.obstacles,
     snapshot.width,
     snapshot.height,
-    () => new THREE.BoxGeometry(0.84, 0.84, 0.84),
-    () => obstacleMaterial,
+    obstacleGeometry,
+    obstacleMaterial,
   );
 
-  foodGroup.clear();
-  foodMesh = new THREE.Mesh(new THREE.SphereGeometry(0.34, 24, 24), foodMaterial);
+  if (!foodMesh) {
+    foodMesh = new THREE.Mesh(foodGeometry, foodMaterial);
+    foodGroup.add(foodMesh);
+  }
+  foodMesh.visible = true;
   foodMesh.position.copy(cellPosition(snapshot.food.x, snapshot.food.y, snapshot.width, snapshot.height, 0.6));
-  foodGroup.add(foodMesh);
 }
 
 function stat(label, value) {
@@ -145,17 +177,38 @@ function formatDuration(ms) {
 
 function updateHUD(payload) {
   const { snapshot } = payload;
+  const hudKey = [
+    snapshot.score,
+    snapshot.snake.length,
+    snapshot.level,
+    snapshot.food_eaten,
+    snapshot.foods_to_next_level,
+    snapshot.obstacles.length,
+    snapshot.elapsed_millis,
+    snapshot.tick_interval_millis,
+    snapshot.started,
+    snapshot.is_over,
+    snapshot.is_won,
+    snapshot.paused,
+    snapshot.has_last_run,
+    snapshot.last_run.score,
+    snapshot.last_run.length,
+    snapshot.last_run.duration_millis,
+  ].join("|");
 
-  statsGrid.innerHTML = [
-    stat("Score", snapshot.score),
-    stat("Length", snapshot.snake.length),
-    stat("Level", snapshot.level || 1),
-    stat("Food", snapshot.food_eaten),
-    stat("Next Level", snapshot.foods_to_next_level),
-    stat("Obstacles", snapshot.obstacles.length),
-    stat("Elapsed", formatDuration(snapshot.elapsed_millis)),
-    stat("Speed", `${snapshot.tick_interval_millis ? (1000 / snapshot.tick_interval_millis).toFixed(1) : "0.0"}/s`),
-  ].join("");
+  if (hudKey !== lastHUDKey) {
+    statsGrid.innerHTML = [
+      stat("Score", snapshot.score),
+      stat("Length", snapshot.snake.length),
+      stat("Level", snapshot.level || 1),
+      stat("Food", snapshot.food_eaten),
+      stat("Next Level", snapshot.foods_to_next_level),
+      stat("Obstacles", snapshot.obstacles.length),
+      stat("Elapsed", formatDuration(snapshot.elapsed_millis)),
+      stat("Speed", `${snapshot.tick_interval_millis ? (1000 / snapshot.tick_interval_millis).toFixed(1) : "0.0"}/s`),
+    ].join("");
+    lastHUDKey = hudKey;
+  }
 
   if (!snapshot.width) {
     overlay.classList.remove("hidden");
@@ -209,6 +262,11 @@ function setStatus(message, isError = false) {
 }
 
 async function refresh() {
+  if (refreshInFlight) {
+    return;
+  }
+
+  refreshInFlight = true;
   try {
     state = await fetchState();
     if (!presetSelect.options.length) {
@@ -225,7 +283,24 @@ async function refresh() {
     setStatus("Connected");
   } catch (error) {
     setStatus(error.message, true);
+  } finally {
+    refreshInFlight = false;
+    scheduleRefresh();
   }
+}
+
+function nextRefreshDelay() {
+  const tick = state?.snapshot?.tick_interval_millis ?? 140;
+  return Math.max(33, Math.min(80, Math.floor(tick / 2)));
+}
+
+function scheduleRefresh() {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+  }
+  refreshTimer = setTimeout(() => {
+    refresh();
+  }, nextRefreshDelay());
 }
 
 function animate() {
@@ -350,5 +425,4 @@ restartBtn.addEventListener("click", async () => {
 
 refresh();
 updateViewport();
-setInterval(refresh, 120);
 animate();
