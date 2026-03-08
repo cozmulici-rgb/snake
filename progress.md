@@ -11,3 +11,12 @@ Original prompt: fix it
 - Further mobile reduction: hide non-relevant controls by state and remove the secondary help block on very narrow screens to free space for the board.
 - 2026-03-07: Created branch `design/web-redesign-plan` for the next web UI pass.
 - Added `docs/ui/web-redesign-plan.md` to convert the redesign feedback into phased implementation work with priorities and acceptance criteria.
+- 2026-03-07: Began Phase 1 HUD hierarchy implementation for the web UI.
+- Implemented the top-5 Phase 1 impact items in the browser HUD:
+- Split the top HUD into primary and secondary clusters instead of a flat metrics bar.
+- Promoted score into a dominant stacked card with best-score context.
+- Paired level with a progress bar and explicit `food to next level` messaging based on the active preset.
+- Demoted secondary metrics so only the useful runtime stats stay visible; obstacles remain conditional until they exist.
+- Reworked HUD styling and breakpoints so the grouped layout remains readable on desktop and narrow screens.
+- 2026-03-07: Added screenshot-capture memory in `docs/workflows/capture-game-screenshots.md`.
+- Includes the server-restart requirement for embedded assets, Playwright install fix under the skill directory, capture commands, and the API-freeze workaround for deterministic overlays.

@@ -2,6 +2,12 @@ import * as THREE from "three";
 
 const canvas = document.getElementById("scene");
 const statsGrid = document.getElementById("stats-grid");
+const scoreCard = document.getElementById("score-card");
+const levelValue = document.getElementById("level-value");
+const progressLabel = document.getElementById("progress-label");
+const progressMeta = document.getElementById("progress-meta");
+const progressFill = document.getElementById("progress-fill");
+const progressCaption = document.getElementById("progress-caption");
 const overlay = document.getElementById("overlay");
 const overlayTitle = document.getElementById("overlay-title");
 const overlayCopy = document.getElementById("overlay-copy");
@@ -170,6 +176,15 @@ function stat(label, value) {
   return `<div class="stat"><strong>${label}</strong><span>${value}</span></div>`;
 }
 
+function scoreMarkup(score, bestScore) {
+  const caption = bestScore > score ? `Best ${bestScore}` : (score > 0 ? "Run active" : "Press Start");
+  return `
+    <span class="eyebrow">Score</span>
+    <span class="score-value">${score}</span>
+    <span class="score-caption">${caption}</span>
+  `;
+}
+
 function formatDuration(ms) {
   const total = Math.max(0, Math.floor(ms / 1000));
   const minutes = String(Math.floor(total / 60)).padStart(2, "0");
@@ -177,8 +192,31 @@ function formatDuration(ms) {
   return `${minutes}:${seconds}`;
 }
 
+function foodsPerLevelForState(payload) {
+  const preset = payload.presets?.[payload.current_preset];
+  return Math.max(1, preset?.foods_per_level ?? 1);
+}
+
+function levelProgress(snapshot, foodsPerLevel) {
+  const collectedThisLevel = snapshot.food_eaten > 0
+    ? (foodsPerLevel - snapshot.foods_to_next_level) % foodsPerLevel
+    : 0;
+  const normalizedCollected = Math.max(0, Math.min(foodsPerLevel, collectedThisLevel));
+  const remaining = Math.max(0, snapshot.foods_to_next_level);
+  const ratio = foodsPerLevel > 0 ? normalizedCollected / foodsPerLevel : 0;
+
+  return {
+    collected: normalizedCollected,
+    total: foodsPerLevel,
+    remaining,
+    ratio,
+  };
+}
+
 function updateHUD(payload) {
   const { snapshot } = payload;
+  const foodsPerLevel = foodsPerLevelForState(payload);
+  const progress = levelProgress(snapshot, foodsPerLevel);
   const hudKey = [
     snapshot.score,
     snapshot.snake.length,
@@ -188,6 +226,7 @@ function updateHUD(payload) {
     snapshot.obstacles.length,
     snapshot.elapsed_millis,
     snapshot.tick_interval_millis,
+    snapshot.best_score,
     snapshot.started,
     snapshot.is_over,
     snapshot.is_won,
@@ -196,19 +235,36 @@ function updateHUD(payload) {
     snapshot.last_run.score,
     snapshot.last_run.length,
     snapshot.last_run.duration_millis,
+    foodsPerLevel,
   ].join("|");
 
   if (hudKey !== lastHUDKey) {
-    statsGrid.innerHTML = [
-      stat("Score", snapshot.score),
+    scoreCard.innerHTML = scoreMarkup(snapshot.score, snapshot.best_score);
+    levelValue.textContent = String(snapshot.level || 1);
+    progressLabel.textContent = "Next Level";
+    progressMeta.textContent = `${progress.collected} / ${progress.total} food`;
+    progressFill.style.width = `${Math.max(0, Math.min(100, progress.ratio * 100))}%`;
+    progressCaption.textContent = progress.remaining > 0
+      ? `${progress.remaining} food to level ${Math.max(1, (snapshot.level || 1) + 1)}`
+      : `Level ${snapshot.level || 1} is ready to advance`;
+
+    const secondaryStats = [
       stat("Length", snapshot.snake.length),
-      stat("Level", snapshot.level || 1),
-      stat("Food", snapshot.food_eaten),
-      stat("Next Level", snapshot.foods_to_next_level),
-      stat("Obstacles", snapshot.obstacles.length),
-      stat("Elapsed", formatDuration(snapshot.elapsed_millis)),
-      stat("Speed", `${snapshot.tick_interval_millis ? (1000 / snapshot.tick_interval_millis).toFixed(1) : "0.0"}/s`),
-    ].join("");
+      snapshot.started || snapshot.food_eaten > 0 || snapshot.is_over
+        ? stat("Food Eaten", snapshot.food_eaten)
+        : "",
+      snapshot.started || snapshot.paused || snapshot.is_over
+        ? stat("Time", formatDuration(snapshot.elapsed_millis))
+        : "",
+      snapshot.started || snapshot.paused || snapshot.is_over
+        ? stat("Speed", `${snapshot.tick_interval_millis ? (1000 / snapshot.tick_interval_millis).toFixed(1) : "0.0"}/s`)
+        : "",
+      snapshot.obstacles.length > 0
+        ? stat("Obstacles", snapshot.obstacles.length)
+        : "",
+    ].filter(Boolean);
+
+    statsGrid.innerHTML = secondaryStats.join("");
     lastHUDKey = hudKey;
   }
 
@@ -271,6 +327,8 @@ function setStatus(message, isError = false) {
 
 function renderGameToText() {
   const snapshot = state?.snapshot ?? null;
+  const foodsPerLevel = state ? foodsPerLevelForState(state) : 1;
+  const progress = snapshot ? levelProgress(snapshot, foodsPerLevel) : null;
   const payload = {
     mode: overlay.classList.contains("hidden") ? "live" : (overlayTitle.textContent || "overlay").toLowerCase(),
     viewport: sceneViewport,
@@ -282,6 +340,12 @@ function renderGameToText() {
       started: snapshot.started,
       paused: snapshot.paused,
       is_over: snapshot.is_over,
+      foods_per_level: foodsPerLevel,
+      progress_to_next_level: progress ? {
+        collected: progress.collected,
+        total: progress.total,
+        remaining: progress.remaining,
+      } : null,
       snake: snapshot.snake,
       food: snapshot.food,
       obstacles: snapshot.obstacles,
