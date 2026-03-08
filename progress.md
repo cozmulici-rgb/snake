@@ -44,3 +44,18 @@ Original prompt: fix it
 - `go test ./...` still passes.
 - Browser capture in `output/web-game-phase2-continue` shows the updated board framing/shadows in a level-6 obstacle state, and `state-0.json` matches the screenshot with `developer_mode: true`.
 - No `errors-*.json` files were produced for `output/web-game-phase2-continue`.
+- 2026-03-08: Began Phase 3 overlay redesign for the web UI.
+- Reworked `internal/ui/web/static/index.html` and `internal/ui/web/static/app.js` so the overlay renders as a state screen instead of a generic control dump.
+- Added explicit overlay sections for current state, summary, primary action, secondary action, difficulty, and state-aware keyboard hints.
+- Start, Ready, Paused, and Game Over now render distinct copy and summary cards instead of one shared paragraph.
+- Difficulty selection now reads as `Difficulty` and the select options no longer use numeric indexing.
+- Added `Space` start support in the web key handler so the overlay hints match actual controls.
+- Start-screen HUD cleanup: when no board is active, the top HUD now shows setup-oriented difficulty messaging instead of live run metrics like `Length 0`.
+- Validation:
+- `go test ./...` passes after the overlay changes.
+- Desktop overlay captures:
+- `output/web-game-phase3-start-v3`
+- `output/web-game-phase3-ready-v2`
+- `output/web-game-phase3-paused-v2`
+- `output/web-game-phase3-gameover-v2`
+- Verified the screenshots against `state-0.json` in each folder and confirmed no `errors-*.json` files were produced for the final `-v2`/`-v3` captures.

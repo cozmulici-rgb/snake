@@ -279,11 +279,25 @@
       box-shadow: var(--shadow);
       pointer-events: auto;
       display: grid;
-      gap: 18px;
+      gap: 20px;
     }
 
     .overlay.hidden {
       display: none;
+    }
+
+    .overlay-header {
+      display: grid;
+      gap: 10px;
+    }
+
+    .overlay-kicker,
+    .overlay-section-label {
+      color: rgba(233, 245, 255, 0.62);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
     }
 
     .overlay h2 {
@@ -298,6 +312,50 @@
       color: var(--muted);
       line-height: 1.45;
       font-size: 18px;
+    }
+
+    .overlay-summary-wrap,
+    .overlay-section {
+      display: grid;
+      gap: 10px;
+    }
+
+    .overlay-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .overlay-summary-card {
+      display: grid;
+      gap: 4px;
+      padding: 12px 13px;
+      border-radius: 16px;
+      border: 1px solid rgba(141, 199, 255, 0.12);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.018));
+    }
+
+    .overlay-summary-card strong {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .overlay-summary-card span {
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .overlay-summary-card.accent span {
+      color: var(--accent-3);
+    }
+
+    .overlay-summary-card.success span {
+      color: var(--accent-2);
     }
 
     .controls {
@@ -409,19 +467,19 @@
       align-items: start;
     }
 
-    .overlay-copy {
+    .overlay-main {
       display: grid;
       gap: 12px;
     }
 
-    .controls-primary {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+    .controls-primary,
+    .controls-secondary {
       align-items: stretch;
     }
 
-    .controls-primary select,
-    .controls-primary .primary {
-      grid-column: 1 / -1;
+    .overlay-select {
+      display: grid;
+      gap: 8px;
     }
 
     .overlay-side {
@@ -431,6 +489,11 @@
       font-size: 14px;
       line-height: 1.45;
       padding-top: 4px;
+    }
+
+    .overlay-side-copy {
+      display: grid;
+      gap: 8px;
     }
 
     .keyline {
@@ -488,6 +551,10 @@
       .overlay {
         width: calc(100% - 24px);
         padding: 20px 18px 18px;
+      }
+
+      .overlay-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .overlay h2 {
@@ -573,6 +640,10 @@
         padding: 16px 14px 14px;
       }
 
+      .overlay-summary {
+        grid-template-columns: 1fr;
+      }
+
       .overlay h2 {
         font-size: 30px;
       }
@@ -639,15 +710,33 @@
     </section>
 
     <section class="overlay" id="overlay">
-      <h2 id="overlay-title">Start a Run</h2>
+      <div class="overlay-header">
+        <span class="overlay-kicker" id="overlay-kicker">Current State</span>
+        <h2 id="overlay-title">Start a Run</h2>
+        <p id="overlay-copy">Pick a preset and press Start. The first movement key begins the run.</p>
+      </div>
+      <div class="overlay-summary-wrap">
+        <span class="overlay-section-label" id="overlay-summary-label">Summary</span>
+        <div class="overlay-summary" id="overlay-summary"></div>
+      </div>
       <div class="overlay-row">
-        <div class="overlay-copy">
-          <p id="overlay-copy">Pick a preset and press Start. The first movement key begins the run.</p>
-          <div class="controls controls-primary">
+        <div class="overlay-main">
+          <div class="overlay-section overlay-select" id="overlay-difficulty-section">
+            <span class="overlay-section-label">Difficulty</span>
             <select id="preset-select"></select>
-            <button class="primary" id="start-btn">Start</button>
-            <button id="restart-btn">Restart</button>
-            <button id="pause-btn">Pause</button>
+          </div>
+          <div class="overlay-section" id="overlay-primary-section">
+            <span class="overlay-section-label" id="overlay-primary-label">Primary Action</span>
+            <div class="controls controls-primary" id="overlay-primary-actions">
+              <button class="primary" id="start-btn">Start</button>
+            </div>
+          </div>
+          <div class="overlay-section" id="overlay-secondary-section">
+            <span class="overlay-section-label" id="overlay-secondary-label">Secondary Action</span>
+            <div class="controls controls-secondary" id="overlay-secondary-actions">
+              <button id="restart-btn">Restart</button>
+              <button id="pause-btn">Pause</button>
+            </div>
           </div>
           <span class="status" id="status-text">Connecting...</span>
           <details class="dev-tools">
@@ -666,12 +755,11 @@
           </details>
         </div>
         <aside class="overlay-side">
-          <div>Use the keyboard to control the snake. The playfield shifts to keep the board visible while menus only appear when action is required.</div>
-          <div class="keyline">
-            <span class="keycap">WASD</span>
-            <span class="keycap">Arrows</span>
-            <span class="keycap">P Pause</span>
-            <span class="keycap">R Restart</span>
+          <div class="overlay-side-copy" id="overlay-side-copy">Use the keyboard to control the snake. The playfield shifts to keep the board visible while menus only appear when action is required.</div>
+          <div class="keyline" id="overlay-keyline">
+            <span class="keycap">Space Start</span>
+            <span class="keycap">WASD Move</span>
+            <span class="keycap">Arrows Move</span>
           </div>
         </aside>
       </div>

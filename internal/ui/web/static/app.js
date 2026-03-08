@@ -9,8 +9,20 @@ const progressMeta = document.getElementById("progress-meta");
 const progressFill = document.getElementById("progress-fill");
 const progressCaption = document.getElementById("progress-caption");
 const overlay = document.getElementById("overlay");
+const overlayKicker = document.getElementById("overlay-kicker");
 const overlayTitle = document.getElementById("overlay-title");
 const overlayCopy = document.getElementById("overlay-copy");
+const overlaySummaryLabel = document.getElementById("overlay-summary-label");
+const overlaySummary = document.getElementById("overlay-summary");
+const overlayDifficultySection = document.getElementById("overlay-difficulty-section");
+const overlayPrimarySection = document.getElementById("overlay-primary-section");
+const overlayPrimaryLabel = document.getElementById("overlay-primary-label");
+const overlayPrimaryActions = document.getElementById("overlay-primary-actions");
+const overlaySecondarySection = document.getElementById("overlay-secondary-section");
+const overlaySecondaryLabel = document.getElementById("overlay-secondary-label");
+const overlaySecondaryActions = document.getElementById("overlay-secondary-actions");
+const overlaySideCopy = document.getElementById("overlay-side-copy");
+const overlayKeyline = document.getElementById("overlay-keyline");
 const presetSelect = document.getElementById("preset-select");
 const startBtn = document.getElementById("start-btn");
 const pauseBtn = document.getElementById("pause-btn");
@@ -440,6 +452,139 @@ function stat(label, value) {
   return `<div class="stat"><strong>${label}</strong><span>${value}</span></div>`;
 }
 
+function summaryCard(label, value, tone = "") {
+  const toneClass = tone ? ` ${tone}` : "";
+  return `<div class="overlay-summary-card${toneClass}"><strong>${label}</strong><span>${value}</span></div>`;
+}
+
+function renderSummary(cards) {
+  overlaySummary.innerHTML = cards.map((card) => summaryCard(card.label, card.value, card.tone)).join("");
+}
+
+function renderKeycaps(labels) {
+  overlayKeyline.innerHTML = labels.map((label) => `<span class="keycap">${label}</span>`).join("");
+}
+
+function setOverlayActions(primaryNodes, secondaryNodes) {
+  const allButtons = [startBtn, pauseBtn, restartBtn];
+  allButtons.forEach((button) => {
+    button.classList.remove("primary");
+    button.hidden = true;
+  });
+
+  primaryNodes.forEach((button) => {
+    button.classList.add("primary");
+    button.hidden = false;
+  });
+  secondaryNodes.forEach((button) => {
+    button.hidden = false;
+  });
+
+  overlayPrimarySection.hidden = primaryNodes.length === 0;
+  overlaySecondarySection.hidden = secondaryNodes.length === 0;
+  overlayPrimaryActions.replaceChildren(...primaryNodes);
+  overlaySecondaryActions.replaceChildren(...secondaryNodes);
+}
+
+function currentPreset(payload) {
+  return payload.presets?.[payload.current_preset] ?? null;
+}
+
+function boardLabel(snapshot) {
+  return snapshot.width && snapshot.height ? `${snapshot.width}x${snapshot.height}` : "40x40";
+}
+
+function updateOverlay(payload) {
+  const { snapshot } = payload;
+  const preset = currentPreset(payload);
+  const summaryCards = [];
+  let sideCopy = "";
+  let keycaps = [];
+
+  overlayPrimaryLabel.textContent = "Primary Action";
+  overlaySecondaryLabel.textContent = "Secondary Action";
+  overlayDifficultySection.hidden = true;
+  overlaySummaryLabel.textContent = "Summary";
+
+  if (!snapshot.width) {
+    overlay.classList.remove("hidden");
+    overlayKicker.textContent = "Current State";
+    overlayTitle.textContent = "Start a Run";
+    overlayCopy.textContent = "Choose a difficulty, then launch a fresh board with Space or the Start action.";
+    overlaySummaryLabel.textContent = "Start Summary";
+    summaryCards.push(
+      { label: "Difficulty", value: preset?.name ?? "Balanced" },
+      { label: "Board", value: boardLabel(snapshot) },
+      { label: "Start", value: "Space", tone: "accent" },
+    );
+    startBtn.textContent = "Start Run";
+    overlayDifficultySection.hidden = false;
+    setOverlayActions([startBtn], []);
+    sideCopy = preset?.description ?? "Pick the tempo you want, then start the next run.";
+    keycaps = ["Space Start", "WASD Move", "Arrows Move"];
+  } else if (!snapshot.started && !snapshot.is_over) {
+    overlay.classList.remove("hidden");
+    overlayKicker.textContent = "Current State";
+    overlayTitle.textContent = "Ready";
+    overlayCopy.textContent = "The board is staged. Press any movement key to launch the snake, or restage the board with Start.";
+    summaryCards.push(
+      { label: "Difficulty", value: preset?.name ?? "Balanced" },
+      { label: "Board", value: boardLabel(snapshot) },
+      { label: "Launch", value: "WASD", tone: "success" },
+    );
+    startBtn.textContent = "Restage Board";
+    overlayDifficultySection.hidden = false;
+    setOverlayActions([startBtn], []);
+    sideCopy = "Use a movement key for the fastest launch. Space restarts the selected difficulty if you want a new opening food layout.";
+    keycaps = ["WASD Launch", "Arrows Launch", "Space Reset"];
+  } else if (snapshot.is_over) {
+    overlay.classList.remove("hidden");
+    overlayKicker.textContent = "Run Complete";
+    overlayTitle.textContent = snapshot.is_won ? "You Win" : "Game Over";
+    overlayCopy.textContent = snapshot.is_won
+      ? "The board is full and the run is complete. Start the next run when you are ready."
+      : "The run ended. Restart immediately or change the difficulty for the next attempt.";
+    overlaySummaryLabel.textContent = "Run Summary";
+    summaryCards.push(
+      { label: "Final Score", value: String(snapshot.last_run?.score ?? snapshot.score), tone: snapshot.is_won ? "success" : "accent" },
+      { label: "Length", value: String(snapshot.last_run?.length ?? snapshot.snake.length) },
+      { label: "Time", value: formatDuration(snapshot.last_run?.duration_millis ?? snapshot.elapsed_millis) },
+      { label: "Level", value: String(snapshot.last_run?.level ?? (snapshot.level || 1)) },
+    );
+    startBtn.textContent = "Start New Run";
+    restartBtn.textContent = "Restart";
+    overlayDifficultySection.hidden = false;
+    overlaySecondaryLabel.textContent = "Next Run";
+    setOverlayActions([restartBtn], [startBtn]);
+    sideCopy = preset?.description ?? "Choose the next difficulty, then restart or begin a new run.";
+    keycaps = ["R Restart", "Space New Run", snapshot.is_won ? "Esc Close" : "WASD New Launch"];
+  } else if (snapshot.paused) {
+    overlay.classList.remove("hidden");
+    overlayKicker.textContent = "Current State";
+    overlayTitle.textContent = "Paused";
+    overlayCopy.textContent = "The board is frozen. Resume the current run or restart clean from the overlay.";
+    overlaySummaryLabel.textContent = "Run Summary";
+    summaryCards.push(
+      { label: "Score", value: String(snapshot.score), tone: "accent" },
+      { label: "Length", value: String(snapshot.snake.length) },
+      { label: "Time", value: formatDuration(snapshot.elapsed_millis) },
+      { label: "Level", value: String(snapshot.level || 1) },
+    );
+    pauseBtn.textContent = "Resume";
+    restartBtn.textContent = "Restart";
+    setOverlayActions([pauseBtn], [restartBtn]);
+    sideCopy = "Resume returns you to the live board instantly. Restart discards the current run and regenerates the board.";
+    keycaps = ["P Resume", "R Restart", "Esc Resume"];
+  } else {
+    overlay.classList.add("hidden");
+    return;
+  }
+
+  renderSummary(summaryCards);
+  overlaySideCopy.textContent = sideCopy;
+  renderKeycaps(keycaps);
+}
+
 function scoreMarkup(score, bestScore) {
   const caption = bestScore > score ? `Best ${bestScore}` : (score > 0 ? "Run active" : "Press Start");
   return `
@@ -479,6 +624,7 @@ function levelProgress(snapshot, foodsPerLevel) {
 
 function updateHUD(payload) {
   const { snapshot } = payload;
+  const preset = currentPreset(payload);
   const foodsPerLevel = foodsPerLevelForState(payload);
   const progress = levelProgress(snapshot, foodsPerLevel);
   const hudKey = [
@@ -503,6 +649,19 @@ function updateHUD(payload) {
   ].join("|");
 
   if (hudKey !== lastHUDKey) {
+    if (!snapshot.width) {
+      scoreCard.innerHTML = scoreMarkup(0, snapshot.best_score);
+      levelValue.textContent = "1";
+      progressLabel.textContent = "Difficulty";
+      progressMeta.textContent = preset?.name ?? "Balanced";
+      progressFill.style.width = "0%";
+      progressCaption.textContent = "Pick a difficulty and start a fresh run.";
+      statsGrid.innerHTML = "";
+      lastHUDKey = hudKey;
+      updateOverlay(payload);
+      return;
+    }
+
     scoreCard.innerHTML = scoreMarkup(snapshot.score, snapshot.best_score);
     levelValue.textContent = String(snapshot.level || 1);
     progressLabel.textContent = "Next Level";
@@ -531,39 +690,15 @@ function updateHUD(payload) {
     statsGrid.innerHTML = secondaryStats.join("");
     lastHUDKey = hudKey;
   }
-
-  if (!snapshot.width) {
-    overlay.classList.remove("hidden");
-    overlayTitle.textContent = "Start a Run";
-    overlayCopy.textContent = "Pick a preset and press Start. The first movement key begins the run.";
-  } else if (!snapshot.started && !snapshot.is_over) {
-    overlay.classList.remove("hidden");
-    overlayTitle.textContent = "Ready";
-    overlayCopy.textContent = "Use WASD or the arrow keys to launch the snake.";
-  } else if (snapshot.is_over) {
-    overlay.classList.remove("hidden");
-    overlayTitle.textContent = snapshot.is_won ? "You Win" : "Game Over";
-    overlayCopy.textContent = snapshot.has_last_run
-      ? `Score ${snapshot.last_run.score}, length ${snapshot.last_run.length}, time ${formatDuration(snapshot.last_run.duration_millis)}. Press Restart to run again.`
-      : "Press Restart to run again.";
-  } else if (snapshot.paused) {
-    overlay.classList.remove("hidden");
-    overlayTitle.textContent = "Paused";
-    overlayCopy.textContent = "Resume with P or continue from the panel controls.";
-  } else {
-    overlay.classList.add("hidden");
-  }
+  updateOverlay(payload);
 
   pauseBtn.textContent = snapshot.paused ? "Resume" : "Pause";
-  pauseBtn.hidden = !snapshot.started || snapshot.is_over;
-  restartBtn.hidden = !snapshot.is_over && !snapshot.paused;
-  startBtn.hidden = snapshot.is_over || snapshot.paused;
   pauseBtn.disabled = !snapshot.width || snapshot.is_over;
   restartBtn.disabled = !snapshot.width;
-  startBtn.disabled = snapshot.started && !snapshot.is_over;
+  startBtn.disabled = false;
   developerModeToggle.checked = Boolean(payload.developer_mode);
   developerModeToggle.disabled = false;
-  developerLevelInput.disabled = !payload.developer_mode || !snapshot.width || snapshot.is_over;
+  developerLevelInput.disabled = !payload.developer_mode || !overlay.classList.contains("hidden") && snapshot.paused === false && snapshot.is_over === false && snapshot.started;
   developerLevelBtn.disabled = developerLevelInput.disabled;
   developerHint.textContent = payload.developer_mode
     ? "Developer mode is active. Level jumps keep progression coherent and do not update saved stats."
@@ -648,7 +783,7 @@ async function refresh() {
       state.presets.forEach((preset, index) => {
         const option = document.createElement("option");
         option.value = String(index);
-        option.textContent = `${index + 1}. ${preset.name}`;
+        option.textContent = preset.name;
         presetSelect.appendChild(option);
       });
     }
@@ -801,6 +936,11 @@ window.addEventListener("resize", () => {
 
 window.addEventListener("keydown", async (event) => {
   const key = event.key.toLowerCase();
+  const targetTag = event.target?.tagName ?? "";
+  const targetIsInteractive = ["INPUT", "SELECT", "TEXTAREA", "BUTTON", "SUMMARY"].includes(targetTag);
+  if (targetIsInteractive) {
+    return;
+  }
   const directions = {
     arrowup: "up",
     w: "up",
@@ -823,12 +963,18 @@ window.addEventListener("keydown", async (event) => {
       await refresh();
       return;
     }
+    if (key === "escape" && state?.snapshot?.started && !state?.snapshot?.is_over) {
+      await callJSON("/api/pause");
+      await refresh();
+      return;
+    }
     if (key === "r") {
       await callJSON("/api/restart");
       await refresh();
       return;
     }
-    if (key === "enter" && !state?.snapshot?.width) {
+    if ((key === "enter" || event.code === "Space") && (!state?.snapshot?.width || !state?.snapshot?.started || state?.snapshot?.is_over) && !state?.snapshot?.paused) {
+      event.preventDefault();
       await callJSON("/api/start", { preset: Number(presetSelect.value) });
       await refresh();
     }
