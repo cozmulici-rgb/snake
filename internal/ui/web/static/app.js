@@ -11,6 +11,8 @@ const pauseBtn = document.getElementById("pause-btn");
 const restartBtn = document.getElementById("restart-btn");
 const statusText = document.getElementById("status-text");
 const statusBar = document.querySelector(".status-bar");
+const layoutGap = 18;
+const narrowBreakpoint = 1100;
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -233,6 +235,12 @@ function updateHUD(payload) {
   }
 
   pauseBtn.textContent = snapshot.paused ? "Resume" : "Pause";
+  pauseBtn.hidden = !snapshot.started || snapshot.is_over;
+  restartBtn.hidden = !snapshot.is_over && !snapshot.paused;
+  startBtn.hidden = snapshot.is_over || snapshot.paused;
+  pauseBtn.disabled = !snapshot.width || snapshot.is_over;
+  restartBtn.disabled = !snapshot.width;
+  startBtn.disabled = snapshot.started && !snapshot.is_over;
 }
 
 async function callJSON(url, body) {
@@ -261,6 +269,34 @@ function setStatus(message, isError = false) {
   statusText.classList.toggle("error", isError);
 }
 
+function renderGameToText() {
+  const snapshot = state?.snapshot ?? null;
+  const payload = {
+    mode: overlay.classList.contains("hidden") ? "live" : (overlayTitle.textContent || "overlay").toLowerCase(),
+    viewport: sceneViewport,
+    snapshot: snapshot ? {
+      width: snapshot.width,
+      height: snapshot.height,
+      score: snapshot.score,
+      level: snapshot.level,
+      started: snapshot.started,
+      paused: snapshot.paused,
+      is_over: snapshot.is_over,
+      snake: snapshot.snake,
+      food: snapshot.food,
+      obstacles: snapshot.obstacles,
+    } : null,
+  };
+  return JSON.stringify(payload);
+}
+
+window.render_game_to_text = renderGameToText;
+window.advanceTime = async (ms = 0) => {
+  await new Promise((resolve) => window.setTimeout(resolve, Math.max(0, ms)));
+  await refresh();
+  return renderGameToText();
+};
+
 async function refresh() {
   if (refreshInFlight) {
     return;
@@ -280,6 +316,7 @@ async function refresh() {
     presetSelect.value = String(state.current_preset);
     renderSnapshot(state.snapshot);
     updateHUD(state);
+    updateViewport();
     setStatus("Connected");
   } catch (error) {
     setStatus(error.message, true);
@@ -340,14 +377,39 @@ function updateCamera(boardWidth, boardHeight) {
 
 function updateViewport() {
   const barRect = statusBar?.getBoundingClientRect();
-  const topOffset = (barRect?.bottom ?? 0) + 18;
-  const availableWidth = Math.max(200, window.innerWidth - 32);
-  const availableHeight = Math.max(200, window.innerHeight - topOffset - 18);
-  const size = Math.max(200, Math.min(availableWidth, availableHeight));
+  const topOffset = Math.round((barRect?.bottom ?? 0) + layoutGap);
+  const overlayVisible = !overlay.classList.contains("hidden");
+  const overlayRect = overlayVisible ? overlay.getBoundingClientRect() : null;
+  const overlayWidth = overlayRect ? Math.ceil(overlayRect.width) : 0;
+  const overlayHeight = overlayRect ? Math.ceil(overlayRect.height) : 0;
+  const sideBySide = overlayVisible && window.innerWidth >= narrowBreakpoint;
 
+  let boardLeft = layoutGap;
+  let boardTop = topOffset;
+  let boardWidth = Math.max(0, window.innerWidth - layoutGap * 2);
+  let boardHeight = Math.max(0, window.innerHeight - topOffset - layoutGap);
+
+  if (overlayVisible) {
+    if (sideBySide) {
+      overlay.style.left = `${layoutGap}px`;
+      overlay.style.top = `${topOffset}px`;
+
+      boardLeft = layoutGap * 2 + overlayWidth;
+      boardWidth = Math.max(0, window.innerWidth - boardLeft - layoutGap);
+    } else {
+      const overlayLeft = Math.max(layoutGap, Math.round((window.innerWidth - overlayWidth) / 2));
+      const overlayTop = Math.max(topOffset + layoutGap, window.innerHeight - overlayHeight - layoutGap);
+      overlay.style.left = `${overlayLeft}px`;
+      overlay.style.top = `${overlayTop}px`;
+
+      boardHeight = Math.max(0, overlayTop - topOffset - layoutGap);
+    }
+  }
+
+  const size = Math.max(96, Math.floor(Math.min(boardWidth, boardHeight)));
   sceneViewport = {
-    left: Math.round((window.innerWidth - size) / 2),
-    top: Math.round(topOffset + (availableHeight - size) / 2),
+    left: Math.round(boardLeft + Math.max(0, (boardWidth - size) / 2)),
+    top: Math.round(boardTop + Math.max(0, (boardHeight - size) / 2)),
     size,
   };
 }
